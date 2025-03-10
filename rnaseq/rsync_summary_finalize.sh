@@ -29,6 +29,14 @@ if [[ $out_dir != /* ]]; then
 fi
 
 #
+# softlink gsea report index.html to outdir
+#
+curr_pwd=$(pwd)
+cd ${out_dir}/star_htseq/differentialExpression_gene/report/gsea;
+ln -s */*/*index.html .
+cd $curr_pwd
+
+#
 # Move project to project_files directory
 #
 mkdir -p $out_dir/project_files

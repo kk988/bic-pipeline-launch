@@ -41,10 +41,17 @@ cd $curr_pwd
 #
 mkdir -p $out_dir/project_files
 cp $run_dir/*sample_mapping.txt $run_dir/*request.txt $run_dir/input.csv $out_dir/project_files/
-# if this has key and comparisons files, copy them and contrasts to project file
-if [ ! stat -t *sample_key*txt 1>/dev/null 2>&1 ]; then
+
+# Check if files matching the pattern exist and copy them if they do
+if ls $run_dir/*sample_key*txt 1>/dev/null 2>&1; then
     cp $run_dir/*sample_key*txt $out_dir/project_files/
+fi
+
+if ls $run_dir/*sample_comparison*txt 1>/dev/null 2>&1; then
     cp $run_dir/*sample_comparison*txt $out_dir/project_files/
+fi
+
+if ls $run_dir/contrasts*csv 1>/dev/null 2>&1; then
     cp $run_dir/contrasts*csv $out_dir/project_files/
 fi
 

@@ -9,8 +9,8 @@ if [ $host != "terra" ] && [ $host != "zeta" ]; then
 fi
 
 # constants
-bic_rnaseq="/juno/bic/work/kristakaz/git/bic-rnaseq"
-bic_diff="/juno/bic/work/kristakaz/git/bic-differentialabundance"
+bic_rnaseq="/juno/opt/common/bic/internal/bic-rnsaeq/current"
+bic_diff="/juno/opt/common/bic/internal/bic-differentialabundance/current"
 profile="singularity"
 DE_only=false
 rsync_only=false
@@ -167,20 +167,6 @@ if [ -d $rsync_dir ]; then
     export LSB_JOB_REPORT_MAIL='Y'
 
     sleep 1
-
-#    excludes="--exclude work --exclude '*.log' --exclude '*.err' "
-#    excludes+="--exclude '*/multiqc_report_data' "
-#    excludes+="--exclude '*/multiqc_report_plots' --exclude '*/raw/*.zip' "
-#    excludes+="--exclude '*/dupradar/gene_data' --exclude '*/dupradar/intercepts_slope' "
-#    excludes+="--exclude '*/log' --exclude '*/rseqc' "
-#    excludes+="--exclude '*/stringtie' --exclude '*/samtools_stats' "
-#    excludes+="--exclude '*/shinyngs_app' --exclude '*/differentialExpression_gene/other' "
-
-#    bsub -J "rsync_${dir_name}" ${rsync_job_hold} -u "${email}" -N \
-#-n 1 -R "rusage[mem=2]" -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \
-#"rsync -avzP ${excludes} ${an_dir} $rsync_dir "
-
-
 
 bsub -J "finalize_${dir_name}" ${rsync_job_hold} -u "${email}" -N \
 -n 1 -R "rusage[mem=2]" -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \

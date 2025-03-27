@@ -18,13 +18,14 @@ proj_file_dir = "project_files"
 multiqc_data_dir = "metrics/multiqc/star_htseq/multiqc_report_data/"
 multiqc_plot_dir = "metrics/multiqc/star_htseq/multiqc_report_plots/png/"
 bicdelivery_summary_dir = "pipeline_info/bicdelivery_summary"
-de_dir =  "star_htseq/differentialExpression_gene/tables/differential/"
-gsea_path = "star_htseq/differentialExpression_gene/report/gsea/"
-de_project_qc_plot_dir1 = "star_htseq/differentialExpression_gene/plots/exploratory/"
+de_dir =  "tables/differential/"
+gsea_path = "report/gsea/"
+de_project_qc_plot_dir1 = "plots/exploratory/"
 de_project_qc_plot_dir2 = "png/"
-de_comparison_qc_plots = "star_htseq/differentialExpression_gene/plots/differential/"
+de_comparison_qc_plots = "plots/differential/"
 #GLOBS
-contrast_glob = proj_file_dir + "/contrasts*.csv"
+contrast_glob = proj_file_dir + "/*contrasts*.csv"
+input_glob = proj_file_dir + "/*input.csv"
 #OTHER
 gsea_FDR_cutoff = 0.25
 gsea_FDR_header = "FDR q-val"
@@ -34,6 +35,8 @@ contrast_target_col = "target"
 contrast_ref_col = "reference"
 contrast_var_col = "variable"
 input_sample_col = "sample"
+
+de_path_from_rnaseq = "star_htseq/differentialExpression_gene/"
 
 multiqc_data_reqs = {
     "general": "multiqc_general_stats.txt"
@@ -49,33 +52,34 @@ def gather_contrast_data(output_dir, contrasts):
         # DE data
         # Open filtered .tsv file, grab # genes up and down 
         # and add to contrasts
-        de_res = pd.read_csv(os.path.join(output_dir, de_dir, contrast + ".deseq2.results_filtered.tsv"), sep="\t")
+        de_res = pd.read_csv(os.path.join(output_dir, de_path_from_rnaseq, de_dir, contrast + ".deseq2.results_filtered.tsv"), sep="\t")
         contrasts[contrast]["DE_up"] = de_res[de_res[de_fold_change_header] >= 0].shape[0]
         contrasts[contrast]["DE_down"] = de_res[de_res[de_fold_change_header] < 0].shape[0]
 
         # GSEA data
-        contrasts[contrast]['GSEA'] = {}
+        if os.path.exists(os.path.join(output_dir, de_path_from_rnaseq, gsea_path)):
+            contrasts[contrast]['GSEA'] = {}
 
-        gsea_datasets = os.listdir(os.path.join(output_dir, gsea_path, contrast))
+            gsea_datasets = os.listdir(os.path.join(output_dir, de_path_from_rnaseq, gsea_path, contrast))
 
-        for dataset in gsea_datasets:
-            contrasts[contrast]['GSEA'][dataset] = {}
-            target_filename = os.path.join(output_dir, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_" + contrasts[contrast]['target'], "tsv"]))
-            reference_filename = os.path.join(output_dir, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_" + contrasts[contrast]['reference'], "tsv"]))
-            if not os.path.exists(target_filename):
-                target_filename = os.path.join(output_dir, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_na_pos","tsv"]))
-                reference_filename = os.path.join(output_dir, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_na_neg","tsv"]))
+            for dataset in gsea_datasets:
+                contrasts[contrast]['GSEA'][dataset] = {}
+                target_filename = os.path.join(output_dir, de_path_from_rnaseq, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_" + contrasts[contrast]['target'], "tsv"]))
+                reference_filename = os.path.join(output_dir, de_path_from_rnaseq, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_" + contrasts[contrast]['reference'], "tsv"]))
                 if not os.path.exists(target_filename):
-                    print("Target GSEA file not found: " + target_filename)
-                    sys.exit(1)
-            t_report = pd.read_csv(target_filename, sep="\t")
-            r_report = pd.read_csv(reference_filename, sep="\t")
-            contrasts[contrast]['GSEA'][dataset][contrasts[contrast]['target'] + "_enriched_pathways" ] = t_report[t_report[gsea_FDR_header] < gsea_FDR_cutoff].shape[0]
-            contrasts[contrast]['GSEA'][dataset][contrasts[contrast]['reference'] + "_enriched_pathways" ] = r_report[r_report[gsea_FDR_header] < gsea_FDR_cutoff].shape[0]
-            contrasts[contrast]['GSEA'][dataset]['index'] = os.path.join(gsea_path, contrast, dataset, ".".join([contrast, dataset,"index", "html"]))
+                    target_filename = os.path.join(output_dir, de_path_from_rnaseq, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_na_pos","tsv"]))
+                    reference_filename = os.path.join(output_dir, de_path_from_rnaseq, gsea_path, contrast, dataset, ".".join([contrast, dataset, "gsea_report_for_na_neg","tsv"]))
+                    if not os.path.exists(target_filename):
+                        print("Target GSEA file not found: " + target_filename)
+                        sys.exit(1)
+                t_report = pd.read_csv(target_filename, sep="\t")
+                r_report = pd.read_csv(reference_filename, sep="\t")
+                contrasts[contrast]['GSEA'][dataset][contrasts[contrast]['target'] + "_enriched_pathways" ] = t_report[t_report[gsea_FDR_header] < gsea_FDR_cutoff].shape[0]
+                contrasts[contrast]['GSEA'][dataset][contrasts[contrast]['reference'] + "_enriched_pathways" ] = r_report[r_report[gsea_FDR_header] < gsea_FDR_cutoff].shape[0]
+                contrasts[contrast]['GSEA'][dataset]['index'] = os.path.join(de_path_from_rnaseq, gsea_path, contrast, dataset, ".".join([contrast, dataset,"index", "html"]))
 
         # DE comparison qc plots
-        contrasts[contrast]["plots"] = glob.glob( os.path.join(output_dir, de_comparison_qc_plots, contrast,"png","*.png"))
+        contrasts[contrast]["plots"] = glob.glob( os.path.join(output_dir, de_path_from_rnaseq, de_comparison_qc_plots, contrast,"png","*.png"))
         # iterate plots paths and remove output dir
         contrasts[contrast]["plots"] = [ plot.replace(output_dir + "/", "") for plot in contrasts[contrast]["plots"] ]
 
@@ -94,20 +98,22 @@ def gather_project_metrics(output_dir):
     copy_to_dir = os.path.join(output_dir, bicdelivery_summary_dir)
     os.makedirs(copy_to_dir, exist_ok=True)
     for key in multiqc_data_reqs:
-        shutil.copy(os.path.join(output_dir, multiqc_data_dir, multiqc_data_reqs[key]), copy_to_dir)
-        proj_metrics["data"][key] = os.path.join(bicdelivery_summary_dir, multiqc_data_reqs[key])
+        if os.path.exists(os.path.join(output_dir, multiqc_data_dir, multiqc_data_reqs[key])):
+            shutil.copy(os.path.join(output_dir, multiqc_data_dir, multiqc_data_reqs[key]), copy_to_dir)
+            proj_metrics["data"][key] = os.path.join(bicdelivery_summary_dir, multiqc_data_reqs[key])
     for key in multiqc_plot_reqs:
-        shutil.copy(os.path.join(output_dir, multiqc_plot_dir, multiqc_plot_reqs[key]), copy_to_dir)
-        proj_metrics["plots"][key] = os.path.join(bicdelivery_summary_dir, multiqc_plot_reqs[key])
+        if os.path.exists(os.path.join(output_dir, multiqc_plot_dir, multiqc_plot_reqs[key])):
+            shutil.copy(os.path.join(output_dir, multiqc_plot_dir, multiqc_plot_reqs[key]), copy_to_dir)
+            proj_metrics["plots"][key] = os.path.join(bicdelivery_summary_dir, multiqc_plot_reqs[key])
 
     # for each variable in de_project_qc_plot_dir1, 
     # grab the files in de_project_qc_plot_dir2
     # and add to proj_metrics
     proj_metrics["comparison_set_qc"] = {}
-    for var in os.listdir(os.path.join(output_dir, de_project_qc_plot_dir1)):
+    for var in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1)):
         proj_metrics["comparison_set_qc"][var] = []
-        for plot in os.listdir(os.path.join(output_dir, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2)):
-            proj_metrics["comparison_set_qc"][var].append(os.path.join(de_project_qc_plot_dir1, var, de_project_qc_plot_dir2, plot))
+        for plot in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2)):
+            proj_metrics["comparison_set_qc"][var].append(os.path.join(de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2, plot))
 
     return proj_metrics
 
@@ -175,7 +181,36 @@ if __name__ == "__main__":
         print("Output directory does not exist")
         sys.exit(1)
 
-    input_file = os.path.join(output_dir, proj_file_dir, "input.csv")
+    # If output directory contains "bicdelivery_diffanalysis" 
+    # Set de_path_from_rnaseq to ""
+    # pull in old json, and remove samples, contrasts, and project_metrics {comarison_set_qc}
+    # from the old json
+    # and add to the new data
+    old_json = None
+    if "bicdelivery_diffanalysis" in output_dir:
+        de_path_from_rnaseq = ""
+        # cut output_dir at "bicdelivery_diffanalysis" and keep everything before it
+        # find path to json file
+        old_json_file = os.path.join(output_dir.split("bicdelivery_diffanalysis")[0], proj_file_dir, "bicdelivery_summary.json")
+        if not os.path.exists(old_json_file):
+            print("Old json file not found: " + old_json_file)
+            sys.exit(1)
+        with open(old_json_file, "r") as f:
+            old_json = json.load(f)
+            # remove samples, contrasts, and project_metrics from old json
+            if "samples" in old_json:
+                del old_json["samples"]
+            if "contrasts" in old_json:
+                del old_json["contrasts"]
+            if "project_metrics" in old_json:
+                if "comparison_set_qc" in old_json["project_metrics"]:
+                    del old_json["project_metrics"]["comparison_set_qc"]
+
+    input_files = glob.glob(os.path.join(output_dir, input_glob))
+    if len(input_files) != 1:
+        print("There should be exactly one input file in the project_files directory")
+        sys.exit(1)
+    input_file = input_files[0]
     if not os.path.exists(input_file):
         print("Input file not found: " + input_file)
         sys.exit(1)
@@ -206,6 +241,12 @@ if __name__ == "__main__":
     res_obj["samples"] = samples
     res_obj["project_metrics"] = proj_metrics
     res_obj["contrasts"] = contrasts
+
+    # If old_json is not None
+    # add the old json data to the new json data
+    if old_json is not None:
+        # add the old json data to the new json data
+        res_obj.update(old_json)
 
     bicsummary_file = os.path.join(output_dir, proj_file_dir, "bicdelivery_summary.json")
     with open(bicsummary_file, "w") as f:

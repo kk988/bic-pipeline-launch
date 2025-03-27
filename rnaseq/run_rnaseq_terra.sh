@@ -9,7 +9,7 @@ if [ $host != "terra" ] && [ $host != "zeta" ]; then
 fi
 
 # constants
-bic_rnaseq="/juno/opt/common/bic/internal/bic-rnsaeq/current"
+bic_rnaseq="/juno/opt/common/bic/internal/bic-rnaseq/current"
 bic_diff="/juno/opt/common/bic/internal/bic-differentialabundance/current"
 profile="singularity"
 DE_only=false

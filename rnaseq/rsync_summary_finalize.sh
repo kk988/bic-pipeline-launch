@@ -32,9 +32,13 @@ fi
 # softlink gsea report index.html to outdir
 #
 curr_pwd=$(pwd)
-cd ${out_dir}/star_htseq/differentialExpression_gene/report/gsea;
-ln -s */*/*index.html .
-cd $curr_pwd
+# if gsea report directory exists, create a softlink to the index.html file
+if [ -d ${out_dir}/star_htseq/differentialExpression_gene/report/gsea ]; then
+    echo "GSEA report directory exists, creating softlink to index.html"
+    cd ${out_dir}/star_htseq/differentialExpression_gene/report/gsea;
+    ln -s */*/*index.html .
+    cd $curr_pwd
+fi
 
 #
 # Move project to project_files directory

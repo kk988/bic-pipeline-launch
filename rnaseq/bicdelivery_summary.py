@@ -15,8 +15,9 @@ import shutil
 #
 #PATHS
 proj_file_dir = "project_files"
-multiqc_data_dir = "metrics/multiqc/star_htseq/multiqc_report_data/"
-multiqc_plot_dir = "metrics/multiqc/star_htseq/multiqc_report_plots/png/"
+multiqc_main_dir = "metrics/multiqc/star_htseq"
+multiqc_data_dir = multiqc_main_dir + "/multiqc_report_data/"
+multiqc_plot_dir = multiqc_main_dir + "/multiqc_report_plots/png/"
 bicdelivery_summary_dir = "pipeline_info/bicdelivery_summary"
 de_dir =  "tables/differential/"
 gsea_path = "report/gsea/"
@@ -36,14 +37,55 @@ contrast_ref_col = "reference"
 contrast_var_col = "variable"
 input_sample_col = "sample"
 
-de_path_from_rnaseq = "star_htseq/differentialExpression_gene/"
+de_path_from_rnaseq = "star_htseq/differentialExpression_gene"
+rel_path_to_rnaseq_from_user_rerun = "../../../"
+
+multiqc_report = "multiqc_report.html"
 
 multiqc_data_reqs = {
-    "general": "multiqc_general_stats.txt"
+    "general": "multiqc_general_stats.txt",
+    "multiqc_report": "multiqc_report.html"
 }
 multiqc_plot_reqs = {
     "multiqc_alignment": "star_alignment_plot-cnt.png",
 }
+
+def grab_input_file(output_dir):
+    input_files = glob.glob(os.path.join(output_dir, input_glob))
+    if len(input_files) != 1:
+        print("There should be exactly one input file in the project_files directory")
+        sys.exit(1)
+    input_file = input_files[0]
+    if not os.path.exists(input_file):
+        print("Input file not found: " + input_file)
+        sys.exit(1)
+    return input_file
+
+def gather_samples_and_contrasts(input_file, contrast_files):
+    samples = {}
+    contrasts = {}
+
+    # Read contrasts files
+    # populate fields in res_obj
+    # have ot add output_dir to input file path
+    for contrast_file in contrast_files:
+
+        contrasts = parse_contrasts(contrast_file, contrasts)
+
+        # grab the variable from contrast keys
+        variables = set( [ contrasts[contrast]["variable"] for contrast in contrasts.keys() ] )
+        samples = pull_sample_groups( input_file, variables, samples)
+
+    # if samples is empty, grab samples from input file
+    if not samples:
+        with open(input_file, "r") as f:
+            header = f.readline().strip().split(",")
+            sample_id_idx = header.index(input_sample_col)
+            for line in f:
+                cols = line.strip().split(",")
+                samples[cols[sample_id_idx]] = {}
+    
+    return (samples, contrasts)
 
 # add to contrast object the data from the DE files
 # gsea, and qc plots
@@ -89,31 +131,51 @@ def gather_contrast_data(output_dir, contrasts):
 # 1. multiqc data
 # 2. multiqc plots
 # 3. DE project qc plots
-def gather_project_metrics(output_dir):
+def gather_project_metrics(output_dir, old_json, copy_to_dir, old_proj_path=None):
     proj_metrics = {}
     proj_metrics["data"] = {}
     proj_metrics["plots"] = {}
 
     # copy files to pipeline_info_dir since these aren't rsync'd
-    copy_to_dir = os.path.join(output_dir, bicdelivery_summary_dir)
-    os.makedirs(copy_to_dir, exist_ok=True)
+    
     for key in multiqc_data_reqs:
         if os.path.exists(os.path.join(output_dir, multiqc_data_dir, multiqc_data_reqs[key])):
             shutil.copy(os.path.join(output_dir, multiqc_data_dir, multiqc_data_reqs[key]), copy_to_dir)
             proj_metrics["data"][key] = os.path.join(bicdelivery_summary_dir, multiqc_data_reqs[key])
+        elif old_json and key in old_json["project_metrics"]["data"]:
+            # grab path from old json, copy to new bicdelivery_summary_dir - set new data key
+            old_path = os.path.join(old_proj_path, old_json["project_metrics"]["data"][key])
+            shutil.copy(old_path, copy_to_dir)
+            proj_metrics["data"][key] = os.path.join(de_path_from_rnaseq, bicdelivery_summary_dir, multiqc_data_reqs[key])
     for key in multiqc_plot_reqs:
         if os.path.exists(os.path.join(output_dir, multiqc_plot_dir, multiqc_plot_reqs[key])):
             shutil.copy(os.path.join(output_dir, multiqc_plot_dir, multiqc_plot_reqs[key]), copy_to_dir)
             proj_metrics["plots"][key] = os.path.join(bicdelivery_summary_dir, multiqc_plot_reqs[key])
+        elif old_json and key in old_json["project_metrics"]["plots"]:
+            # grab path from old json, copy to new bicdelivery_summary_dir - set new data key
+            old_path = os.path.join(old_proj_path, old_json["project_metrics"]["plots"][key])
+            shutil.copy(old_path, copy_to_dir)
+            proj_metrics["plots"][key] = os.path.join(de_path_from_rnaseq, bicdelivery_summary_dir, multiqc_plot_reqs[key])
+
+    #grab multiqc report
+    if os.path.exists(os.path.join(output_dir, multiqc_main_dir, multiqc_report)):
+        proj_metrics["data"]["multiqc_report"] = os.path.join(multiqc_main_dir, multiqc_report)
+    elif old_json and "multiqc_report" in old_json["project_metrics"]['data']:
+        # grab path from old json, copy to new bicdelivery_summary_dir - set new data key
+        old_path = os.path.join(old_proj_path, old_json["project_metrics"]["data"]["multiqc_report"])
+        shutil.copy(old_path, copy_to_dir)
+        proj_metrics['data']["multiqc_report"] = os.path.join(de_path_from_rnaseq, bicdelivery_summary_dir, multiqc_report)
 
     # for each variable in de_project_qc_plot_dir1, 
     # grab the files in de_project_qc_plot_dir2
     # and add to proj_metrics
     proj_metrics["comparison_set_qc"] = {}
-    for var in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1)):
-        proj_metrics["comparison_set_qc"][var] = []
-        for plot in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2)):
-            proj_metrics["comparison_set_qc"][var].append(os.path.join(de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2, plot))
+    # if dir exists, go through it:
+    if os.path.exists(os.path.join(output_dir, de_path_from_rnaseq)):
+        for var in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1)):
+            proj_metrics["comparison_set_qc"][var] = []
+            for plot in os.listdir(os.path.join(output_dir, de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2)):
+                proj_metrics["comparison_set_qc"][var].append(os.path.join(de_path_from_rnaseq, de_project_qc_plot_dir1, var, de_project_qc_plot_dir2, plot))
 
     return proj_metrics
 
@@ -181,57 +243,38 @@ if __name__ == "__main__":
         print("Output directory does not exist")
         sys.exit(1)
 
+    # create files and dirs needed.
+    bicdelivery_summary = os.path.join(output_dir, bicdelivery_summary_dir)
+    os.makedirs(bicdelivery_summary, exist_ok=True)
+    bicsummary_file = os.path.join(output_dir, proj_file_dir, "bicdelivery_summary.json")
+
     # If output directory contains "bicdelivery_diffanalysis" 
     # Set de_path_from_rnaseq to ""
-    # pull in old json, and remove samples, contrasts, and project_metrics {comarison_set_qc}
-    # from the old json
+    # pull in old json
     # and add to the new data
     old_json = None
+    old_proj_path = None
     if "bicdelivery_diffanalysis" in output_dir:
-        de_path_from_rnaseq = ""
         # cut output_dir at "bicdelivery_diffanalysis" and keep everything before it
         # find path to json file
-        old_json_file = os.path.join(output_dir.split("bicdelivery_diffanalysis")[0], proj_file_dir, "bicdelivery_summary.json")
+        old_proj_path = output_dir.split("bicdelivery_diffanalysis")[0]
+        old_json_file = os.path.join(old_proj_path, proj_file_dir, "bicdelivery_summary.json")
         if not os.path.exists(old_json_file):
             print("Old json file not found: " + old_json_file)
             sys.exit(1)
         with open(old_json_file, "r") as f:
             old_json = json.load(f)
-            # remove samples, contrasts, and project_metrics from old json
-            if "samples" in old_json:
-                del old_json["samples"]
-            if "contrasts" in old_json:
-                del old_json["contrasts"]
-            if "project_metrics" in old_json:
-                if "comparison_set_qc" in old_json["project_metrics"]:
-                    del old_json["project_metrics"]["comparison_set_qc"]
 
-    input_files = glob.glob(os.path.join(output_dir, input_glob))
-    if len(input_files) != 1:
-        print("There should be exactly one input file in the project_files directory")
-        sys.exit(1)
-    input_file = input_files[0]
-    if not os.path.exists(input_file):
-        print("Input file not found: " + input_file)
-        sys.exit(1)
+    input_file = grab_input_file(output_dir)
+    (samples, contrasts) = gather_samples_and_contrasts(input_file, glob.glob(os.path.join(output_dir, contrast_glob)))
 
-    contrast_files = glob.glob(os.path.join(output_dir, contrast_glob))
-
-    samples = {}
-    contrasts = {}
-    # Read contrasts files
-    # populate fields in res_obj
-    # have ot add output_dir to input file path
-    for contrast_file in contrast_files:
-
-        contrasts = parse_contrasts(contrast_file, contrasts)
-
-        # grab the variable from contrast keys
-        variables = set( [ contrasts[contrast]["variable"] for contrast in contrasts.keys() ] )
-        samples = pull_sample_groups( input_file, variables, samples)
+    # remove the de_path_from_rnaseq from the output_dir if present
+    if old_json and output_dir.endswith(de_path_from_rnaseq):
+        output_dir = output_dir[:-len(de_path_from_rnaseq)]
+        output_dir = output_dir.rstrip("/")
 
     # get project specific metrics
-    proj_metrics = gather_project_metrics(output_dir)
+    proj_metrics = gather_project_metrics(output_dir, old_json, bicdelivery_summary, old_proj_path)
 
     # gather contrast data
     contrasts = gather_contrast_data(output_dir, contrasts)
@@ -242,13 +285,6 @@ if __name__ == "__main__":
     res_obj["project_metrics"] = proj_metrics
     res_obj["contrasts"] = contrasts
 
-    # If old_json is not None
-    # add the old json data to the new json data
-    if old_json is not None:
-        # add the old json data to the new json data
-        res_obj.update(old_json)
-
-    bicsummary_file = os.path.join(output_dir, proj_file_dir, "bicdelivery_summary.json")
     with open(bicsummary_file, "w") as f:
         json.dump(res_obj, f, indent=4)
     print("Summary file written to " + bicsummary_file)

@@ -83,6 +83,7 @@ export MODULEPATH=/compute/juno/bic/ROOT/opt/modulefiles:$MODULEPATH
 export LD_LIBRARY_PATH=
 mkdir -p ${an_dir}/work/scratch
 export TMPDIR=${an_dir}/work/scratch
+export NXF_SINGULARITY_CACHEDIR=/juno/opt/common/bic/internal/.singularity/cache
 
 . /usr/share/Modules/init/bash
 module load singularity/3.7.1 
@@ -161,20 +162,20 @@ if [ $rsync_only == false ]; then
     done
 fi
 
-## rsync
-if [ -d $rsync_dir ]; then
+# if rsync is filled out, do finalize script
+if [ -z $rsync_dir ]; then
+    echo "No rsync directory provided, skipping rsync."
+    exit 0
+fi
 
-    export LSB_JOB_REPORT_MAIL='Y'
-
-    sleep 1
+export LSB_JOB_REPORT_MAIL='Y'
+sleep 1
 
 bsub -J "finalize_${dir_name}" ${rsync_job_hold} -u "${email}" -N \
 -n 1 -R "rusage[mem=2]" -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \
 /bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir
 
-else
-    echo "Rsync directory not found: $rsync_dir, please rsync manually: rsync -avzP ${excludes} ${an_dir} $rsync_dir "
-fi
+
 
 
 

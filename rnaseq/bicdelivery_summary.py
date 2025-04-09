@@ -44,7 +44,6 @@ multiqc_report = "multiqc_report.html"
 
 multiqc_data_reqs = {
     "general": "multiqc_general_stats.txt",
-    "multiqc_report": "multiqc_report.html"
 }
 multiqc_plot_reqs = {
     "multiqc_alignment": "star_alignment_plot-cnt.png",

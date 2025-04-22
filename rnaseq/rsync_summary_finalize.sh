@@ -32,9 +32,17 @@ fi
 # softlink gsea report index.html to outdir
 #
 curr_pwd=$(pwd)
-cd ${out_dir}/star_htseq/differentialExpression_gene/report/gsea;
-ln -s */*/*index.html .
-cd $curr_pwd
+# if gsea report directory exists, create a softlink to the index.html file
+if [ -d ${out_dir}/star_htseq/differentialExpression_gene/report/gsea ]; then
+    echo "GSEA report directory exists, creating softlink to index.html"
+    cd ${out_dir}/star_htseq/differentialExpression_gene/report/gsea;
+    # if *index.html files are already softlinked, delete the softlink and redo it
+    if ls *.index.html 1>/dev/null 2>&1; then
+        rm *.index.html
+    fi
+    ln -s */*/*index.html .
+    cd $curr_pwd
+fi
 
 #
 # Move project to project_files directory
@@ -58,8 +66,6 @@ fi
 #
 # Run bicdelivery_summary script
 #
-. /usr/share/Modules/init/bash
-module load singularity/3.7.1 
 singularity exec -B /juno:/juno $panda_simg python ${script_dir}/bicdelivery_summary.py $out_dir
 
 #

@@ -93,7 +93,7 @@ def gather_contrast_data(output_dir, contrasts):
         # DE data
         # Open filtered .tsv file, grab # genes up and down 
         # and add to contrasts
-        de_res = pd.read_csv(os.path.join(output_dir, de_path_from_rnaseq, de_dir, contrast + ".deseq2.results_filtered.tsv"), sep="\t")
+        de_res = pd.read_csv(os.path.join(output_dir, de_path_from_rnaseq, de_dir, contrast + ".deseq2.de_results_filtered.tsv"), sep="\t")
         contrasts[contrast]["DE_up"] = de_res[de_res[de_fold_change_header] >= 0].shape[0]
         contrasts[contrast]["DE_down"] = de_res[de_res[de_fold_change_header] < 0].shape[0]
 

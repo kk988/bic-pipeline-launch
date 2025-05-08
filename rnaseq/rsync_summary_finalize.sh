@@ -66,6 +66,8 @@ fi
 #
 # Run bicdelivery_summary script
 #
+. /usr/share/Modules/init/bash
+module load singularity/3.7.1
 singularity exec -B /juno:/juno $panda_simg python ${script_dir}/bicdelivery_summary.py $out_dir
 
 #

@@ -79,10 +79,9 @@ def run_create_nf_files(pipeline, run_path, task, strand, build):
         return False
 
     if len(sample_key) > 0:
-        optional_args += "".join( [f" -k {sk} " for sk in sample_key] )
+        optional_args +=  " --key " + " ".join( sorted(sample_key) )
     if len(sample_comp) > 0:
-        for sc in sample_comp:
-            optional_args += f" -c {sc} "
+        optional_args += " --comparisons " + " ".join( sorted(sample_comp) )
     
     # build command
     cmd = f"{PROJECT_DATA[pipeline]['create_nf_files']} -m {mapping[0]}  -s {strand} -b {build} --dir {run_path} {optional_args}"

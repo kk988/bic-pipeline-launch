@@ -36,6 +36,8 @@ PROJECT_DATA = {
         'mapping_glob': "*_sample_mapping.txt",
         'sample_key_glob': "*_sample_key*.txt",
         'sample_comp_glob': "*_sample_comparisons*.txt",
+        'import_into_clickup': True,
+        'import_script': 'python /pfg/ClickupProjectImport.py'
     }
 }
 

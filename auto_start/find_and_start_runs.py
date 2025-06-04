@@ -56,13 +56,6 @@ def copy_all_files(src_dir, dest_dir):
         if os.path.isfile(src_file):
             shutil.copy2(src_file, dest_file)
 
-# iterate the custom fields array and find the inedex of the field
-def find_custom_field_index(custom_fields, field_name):
-    for idx, field in enumerate(custom_fields):
-        if field['name'] == field_name:
-            return idx
-    return None
-
 def run_create_nf_files(pipeline, run_path, task, strand, build):
     # run the create_nf_files script
     mapping = glob.glob(os.path.join(run_path, PROJECT_DATA[pipeline]['mapping_glob']))
@@ -144,7 +137,7 @@ if __name__ == '__main__':
                     continue
 
                 # if task has email alerted field set to true, skip
-                email_alerted_idx = find_custom_field_index(task['custom_fields'], 'Email Alerted')
+                email_alerted_idx = Clickup.find_custom_field_index(task['custom_fields'], 'Email Alerted')
                 if email_alerted_idx is None:
                     logging.info(f"Task {task['name']} does not have Email Alerted field, skipping")
                     continue

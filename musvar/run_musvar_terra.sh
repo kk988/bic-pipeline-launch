@@ -31,8 +31,8 @@ extra_args=$@
 
 # map between request target and config filename
 declare -A targets_map
-targets_map["hg19"]="impact"
-targets_map["hg38"]="twist"
+targets_map["M-IMPACT"]="impact"
+targets_map["TWIST"]="twist"
 
 if [ ! -f $an_dir/input.csv ]; then
     echo
@@ -45,8 +45,21 @@ run_number=$(grep ^RunNumber $req_file | cut -f2 -d":" | tr -d " " | xargs print
 
 ### targets pulled from request file
 ###
+targets=$(grep ^Targets $req_file | cut -f2 -d":" | tr -d " " | xargs printf "%s" )
+if [ -z "$targets" ]; then
+    echo
+    echo "Error: No targets found in request file. This is required for the sarek pipeline"
+    echo
+    exit
+fi
+if [ -z "${targets_map[$targets]}" ]; then
+    echo
+    echo "Error: Invalid targets '$targets' in request file. Valid targets are: ${!targets_map[@]}"
+    echo
+    exit
+fi
 
-targets_config=$sarek_dir/conf/bic/targets/${targets}.config
+targets_config=$sarek_dir/conf/bic/targets/${targets_map[$targets]}.config
 # check targets conf dir to see if a target config exists
 if [ ! -f $targets_config ]; then
     echo
@@ -78,6 +91,7 @@ nextflow run $sarek_dir/main.nf \
 -work-dir ${an_dir}/work \
 --genome null \
 --igenomes_ignore true \
+--email_on_fail $email \
 --tools freebayes,mutect2,strelka,manta \
 --input ${an_dir}/input.csv \
 --outdir ${an_dir}/out 

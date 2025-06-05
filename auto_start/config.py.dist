@@ -1,0 +1,74 @@
+# Clickup ID for the list where the tickets are stored
+# This is the list where the script will look for tickets to start
+# The list ID can be found in the URL when you are viewing the list in Clickup
+# For example, if the URL is https://app.clickup.com/1234567/v/l/123456789, then the list ID is 123456789
+CLICKUP_LIST_ID = {
+    'RNASEQ' : '900600274609',
+#    'EXOME'  : '900500322773',
+#    'CHIPSEQ': '901301838018'
+}
+
+# Data that is specific to a given project
+# This is where you can specify the project name, the work directory, and the rsync directory
+# The work directory is where the script will look for the files to process
+# The rsync directory is where the script will look for the files to rsync
+#  #  Note: MY rsync directory is only accessible from terra, so I have to use username@terra:/path/to/dir
+# The bic_launch_relpath is the path to the script that start the pipeline
+# The acceptable tickets are the tickets that are acceptable to automate
+# The siblings_to_start are the tickets that are siblings to the ticket that is being procesesd that should be started
+# The manual_pipeline_comment is the comment that will be added to the ticket if the pipeline should not be automated
+# The create_nf_files is the command that will be run to create the nf files (if needed)
+#  #  Note: This is the path of the script from inside the container
+# The request_file_glob is the glob pattern that will be used to find the request files
+# The mapping_glob is the glob pattern that will be used to find the mapping files
+# The sample_key_glob is the glob pattern that will be used to find the sample key files
+# The sample_comp_glob is the glob pattern that will be used to find the sample comparison files
+PROJECT_DATA = {
+    'RNASEQ' : {
+        'work_dir': '/path/to/work_dir',
+        'rsync_dir': 'user@terra:/path/to/rsync/dir',
+        'bic_launch_relpath': '../rnaseq/run_rnaseq_terra.sh',
+        'acceptable_tickets': ['_counts'],
+        'siblings_to_start': ['_differential'],
+        'manual_pipeline_comment': 'would like to run an older version of the pipeline',
+        'create_nf_files': 'python /pfg/pfg_to_nf_files.py',
+        'request_file_glob': "*_request.txt",
+        'mapping_glob': "*_sample_mapping.txt",
+        'sample_key_glob': "*_sample_key*.txt",
+        'sample_comp_glob': "*_sample_comparisons*.txt",
+        'import_into_clickup': True,
+        'import_script': 'python /pfg/ClickupProjectImport.py'
+    }
+}
+
+# This is the path to the file where the run commands are written
+RUN_QUEUE = "/path/to/your/run_queue.txt"
+
+# Clickup URL for the API
+CLICKUP_URL = "https://api.clickup.com/api/v2"
+# Clickup personal token for the API
+# This is the token that is used to authenticate with the Clickup API
+# To generate one follow directions here: https://help.clickup.com/hc/en-us/articles/6303426241687-Use-the-ClickUp-API#personal-api-key
+CLICKUP_PERSONAL_TOKEN = 'pk_123ABC456DEF789GHI'
+# Clickup user ID for the API
+# This is the user ID that is used to authenticate with the Clickup API
+# User ID can be found in the URL when you are viewing your profile in Clickup
+# If you can't find your user id, let me know. I can help you find it
+CLICKUP_USER_ID = '111222333444555666'
+
+# This is the email address where emails will go
+EMAIL = "user@mskcc.org"
+
+# Change log level if you need to debug or are developing
+#LOG_LEVEL = 'DEBUG'
+LOG_LEVEL = 'ERROR'
+
+# Tired of doing gymnastics to get this information
+# This is the list of UUIDs for the custom fields in Clickup
+# They are used in the code, and are not easy to find
+UUIDS = {
+    'Email Alerted' : "34b4bf4f-779d-4105-800c-786f7df8ed1f",
+    'Run Path': "fa260097-e165-44d8-9e72-905b9eb438f9",
+    'Archive Path': "bb22f637-2b95-4da1-8cfb-5ab61eb9fff3",
+    'Pipeline Version': "c59875de-680e-4ff6-bcfe-046f7c292949"
+}

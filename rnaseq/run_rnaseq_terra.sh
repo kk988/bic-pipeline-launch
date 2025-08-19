@@ -14,6 +14,7 @@ bic_diff="/juno/opt/common/bic/internal/bic-differentialabundance/current"
 profile="singularity"
 DE_only=false
 rsync_only=false
+pandas_simg="/juno/bic/depot/singularity/pandas/pandas.simg"
 
 
 # usage:
@@ -173,7 +174,7 @@ sleep 1
 
 bsub -J "finalize_${dir_name}" ${rsync_job_hold} -u "${email}" -N \
 -n 1 -R "rusage[mem=2]" -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \
-/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir
+/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir $pandas_simg
 
 
 

@@ -6,8 +6,11 @@ import logging
 import io
 from contextlib import redirect_stdout
 import re
+import traceback
 from config import *
 from Service import Clickup
+import glob
+from limsETL import LIMSRequestException
 
 def email_message(to, subject, msg): 
     """Send an email message."""
@@ -35,10 +38,19 @@ def get_pipeline_data(ticket_name):
         return []
     else:
         pipeline = pipeline[0]
-        logging.info(f"Ticket {ticket_name} matches pipeline {pipeline}, checking actions...")
+        logging.debug(f"Ticket {ticket_name} matches pipeline {pipeline}, checking actions...")
         return REQUEST_PIPELINE_DATA[pipeline]
     
 def check_fastq(ticket, pipeline):
+    fq_checked = Clickup.find_custom_field_index(ticket['custom_fields'], 'IGO Fastq Checked')
+    if fq_checked is None:
+        logging.debug(f"Task {ticket['name']} does not have IGO Fastq Checked field, skipping")
+        return
+
+    if "value" in ticket['custom_fields'][fq_checked] and ticket['custom_fields'][fq_checked]["value"] == 'true':
+        logging.debug(f"Task {ticket['name']} had fastq checked already, skipping")
+        return
+
     logging.debug(f"Checking FASTQ files for ticket {ticket['id']}...")
     # This function should check if it can glean IGO id from the ticket description
     # and if so, check if the fastq files are found using LIMS and nfs4_getfacl
@@ -51,7 +63,7 @@ def check_fastq(ticket, pipeline):
             igo_ids = re.findall(r'(\d{5}(?:_[a-zA-Z])?)', igo_id_value)
             if igo_ids:
                 igo_ids_to_check.update(igo_ids)
-                logging.info(f"IGO IDs found: {igo_ids}")
+                logging.debug(f"IGO IDs found: {igo_ids}")
 
     if not igo_ids_to_check:
         logging.debug(f"No IGO IDs found in ticket {ticket['id']}, skipping FASTQ check...")
@@ -61,26 +73,49 @@ def check_fastq(ticket, pipeline):
     import GetLIMSInfo
     import MakeProjectFiles
 
+    has_permissions = list()
+    does_not_have_permissions = list()
+    logging.info(f"IGO IDs to check: {', '.join(igo_ids_to_check)} for ticket {ticket['id']}...")
     for project_id in igo_ids_to_check:
         logging.debug(f"Checking FASTQ files for IGO ID {project_id}...")
         # This function should check if the FASTQ files exist using LIMS and nfs4_getfacl
         # For now, we will just log the action
-        GetLIMSInfo.run(project_id, sample_key=False)
-
-        f = io.StringIO()
-        with redirect_stdout(f):
-            MakeProjectFiles.verify_mapping_permissions("Proj_%s_sample_mapping.txt" % project_id)
-        out = f.getvalue()
+        try:
+            GetLIMSInfo.run(project_id, sample_key=False)
+            f = io.StringIO()
+            with redirect_stdout(f):
+                MakeProjectFiles.verify_mapping_permissions("Proj_%s_sample_mapping.txt" % project_id)
+            out = f.getvalue()
+        except LIMSRequestException as e:
+            logging.error(f"Failed to get LIMS info for IGO ID {project_id}: {e}")
+            Clickup.create_task_comment(ticket['id'], f"Failed to get LIMS info for IGO ID {project_id}: {e}")
+            out = "BAD LIMS REQUEST"
+            continue
+        
         if out:
             logging.warning(f"Permissions check output for IGO ID {project_id}:\n{out}")
+            does_not_have_permissions.append(project_id)
+        else:
+            logging.debug(f"Permissions check passed for IGO ID {project_id}.")
+            has_permissions.append(project_id)
 
         # delete file "Proj_%s_sample_mapping.txt" % project_id when done
         os.remove("Proj_%s_sample_mapping.txt" % project_id)
 
+    # write a comment to the ticket with the results
+    comment = f"FASTQ file check results for ticket {ticket['id']}:\n"
+    if has_permissions:
+        comment += f"Projects with permissions: {', '.join(has_permissions)}\n"
+    if does_not_have_permissions:
+        comment += f"Projects POSSIBLY without permissions: {', '.join(does_not_have_permissions)}\n"
+    
+    logging.debug(f"Adding comment to ticket {ticket['id']}: {comment}")
+    Clickup.create_task_comment(ticket['id'], comment)
+    Clickup.set_custom_field(ticket['id'], UUIDS['IGO Fastq Checked'], 'true')
+
 # ticket must be in status "ready for pipeline"
 # have to check if we are to block import of project
 def import_project(ticket, pipeline):
-    logging.info(f"Importing data for ticket {ticket['id']}...")
     # This function should import data into Clickup using the import script
 
     if ticket['status']['status'] != 'ready for pipeline':
@@ -88,12 +123,12 @@ def import_project(ticket, pipeline):
         return
     
     block_import_idx = Clickup.find_custom_field_index(ticket['custom_fields'], DO_NOT_IMPORT_FIELD)
-    if block_import_idx is not None and ticket['custom_fields'][block_import_idx]['value'] and ticket['custom_fields'][block_import_idx]['value'].lower() == 'true':
+    if block_import_idx is not None and "value" in ticket['custom_fields'][block_import_idx] and ticket['custom_fields'][block_import_idx]['value'].lower() == 'true':
         # If the ticket has the "Block Auto Import" field set, skip the import
         logging.debug(f"Ticket {ticket['id']} has 'Block Auto Import' field set, skipping import...")
         return
 
-    project_path_idx = Clickup.find_custom_field_value(ticket['custom_fields'], 'ProjectFolder')
+    project_path_idx = Clickup.find_custom_field_index(ticket['custom_fields'], 'ProjectFolder')
     msg = "".join([f"Ticket {ticket['id']} does not have a valid 'ProjectFolder'. Please fix",
                     " and uncheck 'Block Auto Import' to try importing again.\n\nTo manually import, ",
                     "run the import script helper found here ", MANUAL_IMPORT_SCRIPT, "."])
@@ -102,7 +137,7 @@ def import_project(ticket, pipeline):
         email_message(EMAIL, "Missing ProjectFolder", msg)
         Clickup.set_custom_field(ticket['id'], UUIDS['Block Auto Import'], 'true')
         return
-    
+
     project_path = ticket['custom_fields'][project_path_idx]['value']
     # if path is not actually a path, error and skip import 
     # if request file is not in folder, error and skip import
@@ -119,15 +154,19 @@ def import_project(ticket, pipeline):
         Clickup.set_custom_field(ticket['id'], UUIDS['Block Auto Import'], 'true')
         return
 
+    logging.info(f"Importing data for ticket {ticket['id']}...")
     # Run the import script
-    cmd = f"{PROJECT_DATA[pipeline]['import_script']} {request_file}"
+    cmd = f"{PROJECT_DATA[pipeline]['import_script']} {request_file[0]}"
+    if 'import_script_args' in PROJECT_DATA[pipeline]:
+        cmd += f" {PROJECT_DATA[pipeline]['import_script_args']}"
     logging.debug(f"Running command: {cmd}")
     f = io.StringIO()
     with redirect_stdout(f):
         return_code = os.system(cmd)
     out = f.getvalue()
     logging.debug("Command finished")
-    Clickup.add_comment(ticket['id'], f"Import script output:\n{out}")
+    logging.debug(f"Command output:\n{out}")
+    #Clickup.add_comment(ticket['id'], f"Import script output:\n{out}")
 
     if return_code != 0:
         msg = f"Import script failed for ticket {ticket['id']} with return code {return_code}.\n\nOutput:\n{out}"
@@ -135,38 +174,51 @@ def import_project(ticket, pipeline):
         email_message(EMAIL, "Import Script Failed", msg)
         Clickup.set_custom_field(ticket['id'], UUIDS['Block Auto Import'], 'true')
         return
-    logging.info(f"Import script completed successfully for ticket {ticket['id']}.")
+    logging.debug(f"Import script completed successfully for ticket {ticket['id']}.")
 
-    pass
+    # change status of ticket to submitted to pipeline
+    logging.debug(f"Changing status of ticket {ticket['id']} to 'Submitted to Pipeline'...")
+    Clickup.update_task(ticket['id'], {'status': 'submitted to pipeline'})
 
 def tag_project(ticket, pipeline):
-    logging.info(f"Tagging IMPACT for ticket {ticket['id']}...")
-    # This function should tag the ticket as "impact"
-    pass
+    if "tag_name" not in PROJECT_DATA[pipeline]:
+        logging.error(f"No tag name specified for pipeline {pipeline}. Cannot tag project.")
+        return
+    
+    if "tags" in ticket:
+        tags_present = [tag['name'] for tag in ticket['tags']]
+        if PROJECT_DATA[pipeline]['tag_name'] in tags_present:
+            logging.debug(f"Ticket {ticket['id']} already has tag '{PROJECT_DATA[pipeline]['tag_name']}', skipping...")
+            return
+
+    logging.info(f"Adding tag '{PROJECT_DATA[pipeline]['tag_name']}' to ticket {ticket['id']}...")
+    Clickup.add_tag_to_task(ticket['id'], PROJECT_DATA[pipeline]['tag_name'])
+    
+    return
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=LOG_LEVEL)
 
     # grab open tickets from the request list
-    logging.info("Fetching open tickets from the request list...")
-    body = {'include_closed': False }
+    logging.debug("Fetching open tickets from the request list...")
+    body = {'include_closed': 'false' }
     open_items = Clickup.get_tasks(REQUEST_LIST_ID, body=body)
     
     for ticket in open_items['tasks']:
         ticket_id = ticket['id']
-        logging.info(f"Processing ticket {ticket_id}...")
-
+        logging.debug(f"Processing ticket {ticket_id}...")
+        
         # Check if the ticket has any possible actions
         pdata = get_pipeline_data(ticket['name'])
         actions = pdata['actions'] if pdata else None
 
         if not actions:
-            logging.info(f"No actions found for ticket {ticket_id}, skipping...")
+            logging.debug(f"No actions found for ticket {ticket_id}, skipping...")
             continue
 
         for action in actions:
-            logging.info(f"Performing action '{action}' on ticket {ticket_id}...")
+            logging.debug(f"Performing action '{action}' on ticket {ticket_id}...")
 
             # Perform the action based on the action type
             function_to_call = globals()[action]
@@ -174,10 +226,11 @@ if __name__ == "__main__":
                 function_to_call(ticket, pdata['pipeline'])
             except Exception as e:
                 logging.error(f"Error performing action '{action}' on ticket {ticket_id}: {e}")
+                traceback.print_exc()
                 continue
-            logging.info(f"Action '{action}' completed for ticket {ticket_id}.")
+            logging.debug(f"Action '{action}' completed for ticket {ticket_id}.")
 
-    logging.info("All tickets processed.")
+    logging.debug("All tickets processed.")
 
     # Exit the script
     sys.exit(0)

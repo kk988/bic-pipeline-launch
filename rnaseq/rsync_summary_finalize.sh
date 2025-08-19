@@ -8,12 +8,13 @@ set -e
 
 script_dir=$(dirname "$(realpath "$0")")
 
-# if there is not 3 arguments, print usage and exit
-if [ $# -ne 3 ]; then
-    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir>"
+# if there is not 4 arguments, print usage and exit
+if [ $# -ne 4 ]; then
+    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg>"
     echo "run_dir: directory where the pipeline was run (should have project files)"
     echo "out_dir: outdir provided to the pipeline"
     echo "rsync_dir: directory to rsync the results to"
+    echo "panda_simg: path to the panda singularity image"
     exit 1
 fi
 
@@ -21,7 +22,7 @@ fi
 run_dir=$1
 out_dir=$2
 rsync_dir=$3
-panda_simg="/juno/bic/depot/singularity/pandas/pandas.simg"
+panda_simg=$4
 
 # if outdir is not a full path, add it to run_dir.
 if [[ $out_dir != /* ]]; then
@@ -66,9 +67,7 @@ fi
 #
 # Run bicdelivery_summary script
 #
-. /usr/share/Modules/init/bash
-module load singularity/3.7.1
-singularity exec -B /juno:/juno $panda_simg python ${script_dir}/bicdelivery_summary.py $out_dir
+singularity exec -B ${script_dir} -B ${run_dir} $panda_simg python ${script_dir}/bicdelivery_summary.py $out_dir
 
 #
 # Rsync the results to the rsync directory

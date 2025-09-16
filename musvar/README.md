@@ -28,9 +28,11 @@ Where:
 - Request file is the full path to the request file
 - Analysis directory is the full path to the analysis folder, where input.csv and the request.txt file is
 - Email is your mskcc email
-- Rsync_dir is the directory where the project folder should be rsynced to
+- Rsync_dir is the directory where the project folder should be rsynced to for local archiving, NOT delivery (ex: `/ifs/rtsia01/bic/users/kristakaz/rnaseq`)
 - Extra args are optional arguments that may change over time
     - Currently the only optional argument is 'rsync_only' - this can be used if rsync step failed, but the pipeline finished correctly.
+
+The pipeline will run and will email you though nextflow if it errors out for some reason. If the pipeline is successful (and you provide rsync directory) you will recieve an email through server when the rsync has completed whether or not it is successful. This script will also output a file to the analysis directory provided with the setup and command used to run the pipeline. You *should* be able to `mv musvar_cmd.txt musvar_cmd.sh && chmod +x musvar_cmd.sh` and then run it as a bash script to rerun the pipeline command. 
 
 ## Rerunning
 

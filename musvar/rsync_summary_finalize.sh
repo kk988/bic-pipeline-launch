@@ -31,7 +31,9 @@ fi
 # Move project to project_files directory
 #
 mkdir -p $out_dir/project_files
-cp $run_dir/*sample_mapping.txt $run_dir/input.csv $out_dir/project_files/
+[[ -e $run_dir/*sample_mapping.txt ]] && cp $run_dir/*sample_mapping.txt $out_dir/project_files/
+[[ -e $run_dir/*request.txt ]] && cp $run_dir/*request.txt $out_dir/project_files/
+[[ -e $run_dir/input.csv ]] && cp $run_dir/input.csv $out_dir/project_files/
 
 #
 # Rsync the results to the rsync directory

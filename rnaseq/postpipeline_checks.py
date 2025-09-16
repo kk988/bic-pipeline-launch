@@ -26,6 +26,7 @@ import sys
 import logging
 import glob
 import json
+import csv
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,11 +34,14 @@ logging.basicConfig(level=logging.INFO)
 # CONSTANTS FOR FILE PATHS
 multiqc_report = "metrics/multiqc/star_htseq/multiqc_report.html"
 merged_counts_file = "star_htseq/htseq/htseq.merged.counts.tsv"
+alignment_path = "star_htseq/alignment/"
+alignment_suffix = ".markdup.sorted.bam"
 de_tables_dir = "star_htseq/differentialExpression_gene/tables/differential/"
 de_full_table_suffix = ".deseq2.de_results.tsv"
 de_filtered_table_suffix = ".deseq2.de_results_filtered.tsv"
 de_report_dir = "star_htseq/differentialExpression_gene/report/"
 de_gsea_dir = "star_htseq/differentialExpression_gene/report/gsea/"
+input_file = "input.csv"
 request_glob = "*_request.txt"
 contrasts_glob = "contrasts*.csv"
 params_glob = "pipeline_info/params_*.json"
@@ -46,6 +50,11 @@ genome_map = {"hg19":"hg19_local",
               "hg38":"hg38_local",
               "mm10":"mm10_local",
               "mm39":"mm39_local"}
+
+genome_gene_isupper = {"hg19": True,
+                        "hg38": True,
+                        "mm10": False,
+                        "mm39": False}
 
 def check_file_exists(file_path):
     """Check if a file exists."""
@@ -123,6 +132,29 @@ def get_pipeline_genome(odir):
     logging.error("Genome not found in params file.")
     return None
 
+def merged_counts_checks(samples, odir, merged_counts_file, expected_genome):
+    missing_samples = False
+    gene_error = False
+
+    # open with csv dict reader
+    with open(os.path.join(odir, merged_counts_file), 'r') as mc:
+        reader = csv.DictReader(mc, delimiter='\t')
+        # only read the first 20 rows to check gene names
+        for _ in range(20):
+            row = next(reader)
+            gene_name = row['GeneSymbol']
+            if genome_gene_isupper[expected_genome] != gene_name.isupper():
+                logging.error(f"Gene name {gene_name} is not all caps as expected for {expected_genome}.")
+                gene_error = True
+
+    samples_not_in_header = [ sample for sample in samples if sample not in reader.fieldnames ]
+
+    if samples_not_in_header:
+        logging.error(f"Samples missing from merged counts file: {', '.join(samples_not_in_header)}")
+        missing_samples = True
+
+    return not (missing_samples and gene_error)
+
 def perform_checks(req_data, wdir):
     error_found = False
 
@@ -131,8 +163,6 @@ def perform_checks(req_data, wdir):
     """Perform all post-pipeline checks."""
     # Check for required files
     if not check_file_exists(os.path.join(odir, multiqc_report)):
-        error_found = True
-    if not check_file_exists(os.path.join(odir, merged_counts_file)):
         error_found = True
     if not check_file_exists(os.path.join(odir, merged_counts_file)):
         error_found = True
@@ -159,6 +189,24 @@ def perform_checks(req_data, wdir):
     elif genome_map[expected_genome] != pipeline_genome:
         logging.error(f"Genome mismatch: expected {genome_map[expected_genome]}, but got {pipeline_genome}.")
         error_found = True
+
+    # sample specific checks
+    mapping_file = os.path.join(wdir, input_file)
+    if not check_file_exists(mapping_file):
+        logging.error(f"Mapping file {mapping_file} does not exist.")
+        error_found = True
+    else:
+        with open(mapping_file, 'r') as mf:
+            samples = [line.strip().split(',')[0] for line in mf if line.strip() and not line.startswith('sample,fastq_1')]
+        
+        # check that all samples are aligned
+        for sample in samples:
+            if not check_file_exists(os.path.join(odir, alignment_path, sample + alignment_suffix)):
+                logging.error(f"Aligned BAM file for sample {sample} does not exist.")
+                error_found = True
+
+        if not merged_counts_checks(samples, odir, merged_counts_file, expected_genome):
+            error_found = True
 
     # Additional checks can be added here as needed
 

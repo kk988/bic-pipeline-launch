@@ -180,6 +180,9 @@ if __name__ == '__main__':
                 # make run path - copy files from project_path to run path
                 os.makedirs(run_path, exist_ok=True)
                 copy_all_files(project_path, run_path)
+                # write task id to a file in run_path
+                with open(f"{run_path}/clickup_task_id.txt", 'w') as f:
+                    f.write(task['id'] + '\n')
                 logging.debug(f"Run path {run_path} created; project files copied")
 
                 rsync_dir = PROJECT_DATA[pipeline]['rsync_dir']

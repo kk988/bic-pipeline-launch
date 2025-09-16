@@ -23,6 +23,8 @@ run_dir=$1
 out_dir=$2
 rsync_dir=$3
 panda_simg=$4
+pfg_simg=$5
+delivery_dir=$6
 
 # if outdir is not a full path, add it to run_dir.
 if [[ $out_dir != /* ]]; then
@@ -75,4 +77,78 @@ singularity exec -B ${script_dir} -B ${run_dir} $panda_simg python ${script_dir}
 
 echo "rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $run_dir $rsync_dir"
 rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $run_dir $rsync_dir
+
+#
+# final checks - store stderr in variable
+#
+stderr=$(python ${script_dir}/postpipeline_checks.py $out_dir 2>&1)
+
+#
+# rsync to delivery directory
+#
+pi=$(grep ^PI: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+inv=$(grep ^Investigator: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+proj_id=$(grep ^Project_ID: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+run_num="r_$(grep ^RunNumber $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " " | xargs printf "%03d" )"
+if [ -z "$pi" ] || [ -z "$inv" ]; then
+    printf "No PI or Investigator found in request file, not delivering project!\n"
+    exit 1
+fi
+del_path=${delivery_dir}/${pi}/${inv}/${proj_id}/${run_num}/
+mkdir -p $del_path
+echo "rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path"
+rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path
+
+#
+# permissions
+#
+# for each directory, set to 775
+find $del_path -type d -exec chmod 775 {} \;
+# for each file, set to 664
+find $del_path -type f -exec chmod 664 {} \;
+
+#
+# ticket_update
+#
+# if grab lines from stderr that start with ERROR, add to comment in ticket
+# grab pipeline version for both rnaseq and diff
+# close those tickets.
+comments=""
+ticket_id=""
+diff_ver=""
+err_lines=$(echo "$stderr" | grep ^ERROR || true)
+
+#save comments if there are error lines
+if [ ! -z "$err_lines" ]; then
+    comments="Post-pipeline checks found some issues:\n$err_lines"
+fi
+
+# grab ticket id from run_dir/clickup_task_id.txt if it exists
+if [ -f $run_dir/clickup_task_id.txt ]; then
+    ticket_id=$(cat $run_dir/clickup_task_id.txt)
+fi
+
+rnaseq_ver=$(grep nf-core/rnaseq $out_dir/pipeline_info/*.yml | cut -f2 -d":" | tr -d " ")
+if [ -d $out_dir/star_htseq/differentialExpression_gene ]; then
+    diff_ver=$(grep nf-core/differentialabundance $out_dir/star_htseq/differentialExpression_gene/pipeline_info/*.yml | cut -f2 -d":" | tr -d " ")
+fi
+
+close_pipeline_cmd="python ${script_dir}/close_pipeline.py --ticket_id $ticket_id --rnaseq_ver $rnaseq_ver --rsync_dir $rsync_dir --delivery_dir $del_path"
+
+echo -e "RNA-seq pipeline version: $rnaseq_ver"
+if [ ! -z "$diff_ver" ]; then
+    echo -e "Diff pipeline version: $diff_ver"
+    close_pipeline_cmd="$close_pipeline_cmd --diff_ver $diff_ver"
+fi
+if [ ! -z "$comments" ]; then
+    echo -e "Comments for ticket:\n$comments"
+    close_pipeline_cmd="$close_pipeline_cmd --comments \"$comments\""
+fi
+
+if [ ! -z "$ticket_id" ]; then
+    echo "Updating ticket: $ticket_id"
+    echo "Running singularity exec -B ${script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd"
+    singularity exec -B ${script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd
+fi
+
 

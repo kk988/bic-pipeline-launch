@@ -34,6 +34,6 @@ Where:
 
 ## Rerunning
 
-Currently there is no fast way to rerun the bic-sarek pipeline. Nextflows -resume key does nothing because usually the intermediate files are deleted at the end of the pipeline run, successful or not (I think because they are too big). However, I have been able to run the pipeline from step variant calling which helps skip the initial alignment. 
+Currently there is no fast way to `resume` the bic-sarek pipeline. Nextflows `-resume` key does nothing because usually the intermediate files are deleted at the end of the pipeline run (need to look into this). However, I have been able to run the pipeline from step variant calling which helps skip the initial alignment. 
 
-When `run_musvar_<server>.sh` runs, it will output a file to the `analysis directory` called `musvar_cmd.txt` with the nextflow command that was run. There are some setup 
+When `run_musvar_<server>.sh` runs, it will output a file to the `analysis directory` called `musvar_cmd.txt` with the nextflow command that was run. In order to start the pipeline at the variant calling step, add `--step 'variant_calling'` to the end of the nextflow command and change `--input <analysis_directory>/input.csv` to `--input <analysis_directory>/<outdir>/csv/recalibrated.csv`. *note* this will NOT run the full automated analysis, just the analysis step. In order to continue automation after pipeline reruns succesfully, run `run_musvar_<server>.sh` with "extra arg" `rsync_only`. 

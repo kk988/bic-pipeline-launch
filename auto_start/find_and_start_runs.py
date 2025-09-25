@@ -110,18 +110,19 @@ def start_pipeline(run_path, pipeline, task):
 
 if __name__ == '__main__':
     logging.basicConfig(level=LOG_LEVEL)
-    logging.info("Starting script to find and start runs")
+    logging.debug("Starting script to find and start runs")
 
     for pipeline in CLICKUP_LIST_ID:
-        logging.info(f"Searching list {pipeline}")
+        logging.debug(f"Searching list {pipeline}")
         body = {
             'assignees[]': [CLICKUP_USER_ID],
-            'statuses[]': ['TO DO'],
-            'include_closed': False,
-            'subtasks': True
+            'statuses[]': ['to do'],
+            'include_closed': 'false',
+            'subtasks': 'true'
         }
         todo_tasks = Clickup.get_tasks(CLICKUP_LIST_ID[pipeline], body)
-        logging.info(f"Found {len(todo_tasks['tasks'])} tasks in list {pipeline}")
+        if len(todo_tasks['tasks']) > 0:
+            logging.info(f"Found {len(todo_tasks['tasks'])} tasks in list {pipeline}")
 
         for task in todo_tasks["tasks"]:
             logging.info(f"Checking task {task['name']}")
@@ -147,7 +148,7 @@ if __name__ == '__main__':
                     continue
 
                 parent = Clickup.get_task(parent_id)
-                logging.info(f"Parent task {parent['name']} found")
+                logging.debug(f"Parent task {parent['name']} found")
 
                 # record parent task name, 
                 # record sibling tasks whose name ends with a value in sibling_to_start
@@ -179,6 +180,9 @@ if __name__ == '__main__':
                 # make run path - copy files from project_path to run path
                 os.makedirs(run_path, exist_ok=True)
                 copy_all_files(project_path, run_path)
+                # write task id to a file in run_path
+                with open(f"{run_path}/clickup_task_id.txt", 'w') as f:
+                    f.write(task['id'] + '\n')
                 logging.debug(f"Run path {run_path} created; project files copied")
 
                 rsync_dir = PROJECT_DATA[pipeline]['rsync_dir']
@@ -217,6 +221,9 @@ if __name__ == '__main__':
                 Clickup.update_task(task['id'], inprogress)
                 Clickup.set_custom_field(task['id'], UUIDS['Run Path'], run_path)
                 Clickup.set_custom_field(task['id'], UUIDS['Archive Path'], f"{rsync_dir}/{project_name}")
+
+                # update parent task to in progress
+                Clickup.update_task(parent_id, inprogress)
 
                 for sibling in valid_siblings:
                     logging.debug(f"Starting sibling task {sibling}")

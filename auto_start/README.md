@@ -5,6 +5,16 @@ This code will (hopefully) be able to automate any pipeline from CLICKUP request
 ## Overview
 Currently the code works as such:
 
+### run_request_list_actions.sh
+This is a helper script that goes through open `#REQUEST` tickets and runs some actions on them.
+
+Python code `request_list_actions.py` is a script that is run inside the [Project File Generation](https://github.com/cBio-MSKCC/project_file_generation)(PFG) container on the server. This code will utilize the `Clickup` service in PFG code to query all open tickets in our `#REQUEST` task list. It will cycle through each ticket, and if it's name has a specific pipeline in it (see keys `REQUEST_PIPELINE_DATA` in config), it will run through the actions associated with that pipeline. 
+
+Current actions include:
+- import_project - imports given project into another list where the actual pipeline is run (sometimes automatically).
+- tag_project - adds a tag to said task. This was done so that clickup automation could take over (auto-assigning). This may be retired soon since clickup has some new features that could probably handle this.
+- check_fastq - check that BIC has permissions to this fastq. Write the results to said clickup task
+
 ### find_and_start.sh
 
 This is a helper script which will allow you to run the matching python script on crontab. Example crontab to start this is here:

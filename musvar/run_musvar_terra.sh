@@ -1,7 +1,7 @@
 #!/bin/bash
 
 script_dir=$(dirname "$(realpath "$0")")
-sarek_dir="/juno/bic/work/kristakaz/git/bic-sarek"
+sarek_dir="/opt/common/bic/internal/bic-sarek/current"
 profile="singularity"
 rsync_only=false
 
@@ -101,6 +101,7 @@ if [ $rsync_only == false ]; then
     nf_cmd="bsub -J MusVar_${dir_name} -n 4 -R \"rusage[mem=8]\" -W 500:00 -cwd ${an_dir} -o ${an_dir}/musvar.log -e ${an_dir}/musvar.err \
     nextflow run $sarek_dir/main.nf \
     -profile $profile \
+    -resume \
     -ansi-log false \
     -c $sarek_dir/conf/bic/bic_musvar.config \
     -c $sarek_dir/conf/bic/juno.config \

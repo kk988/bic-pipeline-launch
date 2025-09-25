@@ -212,7 +212,6 @@ def perform_checks(req_data, wdir):
 
     if error_found:
         logging.error("Post-pipeline checks failed.")
-        sys.exit(1)
     else:
         logging.info("All post-pipeline checks passed successfully.")
 

@@ -8,6 +8,35 @@ CLICKUP_LIST_ID = {
 #    'CHIPSEQ': '901301838018'
 }
 
+#Request ID for request tickets (not project tickets)
+REQUEST_LIST_ID = '900501705117'
+
+REQUEST_PIPELINE_DATA = {
+    "Mutation_Pipeline" : {
+        'actions' : ['check_fastq'],
+        'pipeline' : 'VARIANTS',
+    },
+    "Standard RNAseq Pipeline": {
+        'actions' : ['check_fastq', 'import_project'],
+        'pipeline' : 'RNASEQ',
+    },
+    "IMPACT_Pipeline" : {
+        'actions' : ['check_fastq', 'tag_project'],
+        'pipeline' : 'IMPACT',
+    },
+    "scRNA-seq" : {
+        'actions' : ['check_fastq'],
+        'pipeline' : 'SCRNASEQ',
+    }
+}
+
+CHECK_FASTQ_IGO = [ "IGO Project ID", "IGO IDs" ]
+NFS4_ACL_PERMISSIONS = "A:g:bicigo@hpc.private:rx"
+
+DO_NOT_IMPORT_FIELD = "Block Auto Import"
+MANUAL_IMPORT_SCRIPT = "/PATH/TO/clickup_project_import.sh"
+
+
 # Data that is specific to a given project
 # This is where you can specify the project name, the work directory, and the rsync directory
 # The work directory is where the script will look for the files to process
@@ -30,14 +59,18 @@ PROJECT_DATA = {
         'bic_launch_relpath': '../rnaseq/run_rnaseq_terra.sh',
         'acceptable_tickets': ['_counts'],
         'siblings_to_start': ['_differential'],
-        'manual_pipeline_comment': 'would like to run an older version of the pipeline',
+        'manual_pipeline_comment': 'use pipeline version',
         'create_nf_files': 'python /pfg/pfg_to_nf_files.py',
         'request_file_glob': "*_request.txt",
         'mapping_glob': "*_sample_mapping.txt",
         'sample_key_glob': "*_sample_key*.txt",
         'sample_comp_glob': "*_sample_comparisons*.txt",
         'import_into_clickup': True,
-        'import_script': 'python /pfg/ClickupProjectImport.py'
+        'import_script': 'python /pfg/ClickupProjectImport.py',
+        'import_script_args': '--assign_main CLICKUP_ID --assign_sub CLICKUP_ID --log DEBUG',
+    },
+    'IMPACT' : {
+        'tag_name' : 'impact'
     }
 }
 
@@ -60,8 +93,8 @@ CLICKUP_USER_ID = '111222333444555666'
 EMAIL = "user@mskcc.org"
 
 # Change log level if you need to debug or are developing
-#LOG_LEVEL = 'DEBUG'
-LOG_LEVEL = 'ERROR'
+LOG_LEVEL = 'INFO' # Options: DEBUG, INFO, WARNING, ERROR
+#LOG_LEVEL = 'ERROR'
 
 # Tired of doing gymnastics to get this information
 # This is the list of UUIDs for the custom fields in Clickup
@@ -70,5 +103,7 @@ UUIDS = {
     'Email Alerted' : "34b4bf4f-779d-4105-800c-786f7df8ed1f",
     'Run Path': "fa260097-e165-44d8-9e72-905b9eb438f9",
     'Archive Path': "bb22f637-2b95-4da1-8cfb-5ab61eb9fff3",
-    'Pipeline Version': "c59875de-680e-4ff6-bcfe-046f7c292949"
+    'Pipeline Version': "c59875de-680e-4ff6-bcfe-046f7c292949",
+    'Block Auto Import': "7bbbd0ac-bc30-4896-a3b2-5a16887ed6cf",
+    'IGO Fastq Checked': "f096a7ba-720b-4ee4-9d8d-050b55f20237",
 }

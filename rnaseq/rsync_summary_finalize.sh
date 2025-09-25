@@ -9,7 +9,7 @@ set -e
 script_dir=$(dirname "$(realpath "$0")")
 
 # if there is not 4 arguments, print usage and exit
-if [ $# -ne 4 ]; then
+if [ $# -ne 6 ]; then
     echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg>"
     echo "run_dir: directory where the pipeline was run (should have project files)"
     echo "out_dir: outdir provided to the pipeline"
@@ -81,21 +81,23 @@ rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $run_dir $rsync_dir
 #
 # final checks - store stderr in variable
 #
-stderr=$(python ${script_dir}/postpipeline_checks.py $out_dir 2>&1)
+echo "Running post-pipeline checks..."
+echo "python3 ${script_dir}/postpipeline_checks.py $run_dir 2>&1"
+this_stderr=$(python3 ${script_dir}/postpipeline_checks.py $run_dir 2>&1)
 
 #
 # rsync to delivery directory
 #
 pi=$(grep ^PI: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 inv=$(grep ^Investigator: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
-proj_id=$(grep ^Project_ID: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+proj_id=$(grep ^ProjectID: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 run_num="r_$(grep ^RunNumber $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " " | xargs printf "%03d" )"
 if [ -z "$pi" ] || [ -z "$inv" ]; then
     printf "No PI or Investigator found in request file, not delivering project!\n"
     exit 1
 fi
 del_path=${delivery_dir}/${pi}/${inv}/${proj_id}/${run_num}/
-mkdir -p $del_path
+mkdir -m 775 -p $del_path
 echo "rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path"
 rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path
 
@@ -116,7 +118,7 @@ find $del_path -type f -exec chmod 664 {} \;
 comments=""
 ticket_id=""
 diff_ver=""
-err_lines=$(echo "$stderr" | grep ^ERROR || true)
+err_lines=$(echo "$this_stderr" | grep ^ERROR || true)
 
 #save comments if there are error lines
 if [ ! -z "$err_lines" ]; then
@@ -133,7 +135,7 @@ if [ -d $out_dir/star_htseq/differentialExpression_gene ]; then
     diff_ver=$(grep nf-core/differentialabundance $out_dir/star_htseq/differentialExpression_gene/pipeline_info/*.yml | cut -f2 -d":" | tr -d " ")
 fi
 
-close_pipeline_cmd="python ${script_dir}/close_pipeline.py --ticket_id $ticket_id --rnaseq_ver $rnaseq_ver --rsync_dir $rsync_dir --delivery_dir $del_path"
+close_pipeline_cmd="python ${script_dir}/close_pipeline_subtasks.py --ticket_id $ticket_id --rnaseq_ver $rnaseq_ver --rsync_dir $rsync_dir --del_path $del_path"
 
 echo -e "RNA-seq pipeline version: $rnaseq_ver"
 if [ ! -z "$diff_ver" ]; then
@@ -147,8 +149,8 @@ fi
 
 if [ ! -z "$ticket_id" ]; then
     echo "Updating ticket: $ticket_id"
-    echo "Running singularity exec -B ${script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd"
-    singularity exec -B ${script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd
+    echo "Running singularity exec -B ${dirname $script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd"
+    singularity exec -B ${dirname $script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd
 fi
 
 

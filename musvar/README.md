@@ -1,7 +1,7 @@
 # Musvar 
 (bic-sarek with musvar config)
 
-These scripts are used to run musvar pipeline, which is bic-sarek pipeline, with additional musvar steps.
+These scripts are used to run musvar pipeline, which is bic-sarek pipeline, with additional musvar steps. The code can be found [here](https://github.com/cBio-MSKCC/bic-sarek). 
 
 ## Setup analysis folder
 Setting up a project folder requires these things:
@@ -21,7 +21,7 @@ Currently available targets: M-IMPACT, TWIST
 
 ## Running
 
-To run from scratch. 
+Juno cluster only. To run from scratch. 
 `Usage: run_musvar_terra.sh <request file> <analysis directory> <email> <rsync_dir> [extra args]`
 
 Where:

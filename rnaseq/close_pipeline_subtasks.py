@@ -1,8 +1,12 @@
 from Service import Clickup
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../auto_start')))
-from config import *
+import importlib.util
+
+config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../auto_start/config.py'))
+spec = importlib.util.spec_from_file_location("automation_config", config_path)
+automation_config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(automation_config)
 import logging
 import argparse
 
@@ -27,7 +31,7 @@ def update_custom_fields(task_id, fields, task_fields, dry_run):
                 logging.info(f"Field {key} already set to {value}, skipping update.")
                 continue
             
-        Clickup.update_task_custom_fields(task_id, task_fields[key]['id'], value)
+        Clickup.set_custom_field(task_id, task_fields[key]['id'], value)
         logging.info(f"Updated task {task_id} with fields {fields}")
 
 if __name__ == "__main__":
@@ -46,7 +50,7 @@ if __name__ == "__main__":
     
     # grab task info, parent, and cfs
     curr_task = Clickup.get_task(args.ticket_id)
-    task_cf = Clickup.format_field_mapping({"fields": curr_task["custom_fields"]})
+    task_cf = Clickup.format_field_map({"fields": curr_task["custom_fields"]})
     parent_id = curr_task.get('parent', None)
     
     # update custom fields for counts task
@@ -64,11 +68,11 @@ if __name__ == "__main__":
     parent = Clickup.get_task(parent_id)
 
     # NOTE: There will be a bug here when there are more than one acceptable "siblings_to_start"
-    valid_siblings = [ subtask['id'] for subtask in parent['subtasks'] if any(ticket in subtask['name'] for ticket in PROJECT_DATA["RNASEQ"]['siblings_to_start']) ]
+    valid_siblings = [ subtask['id'] for subtask in parent['subtasks'] if any(ticket in subtask['name'] for ticket in automation_config.PROJECT_DATA["RNASEQ"]['siblings_to_start']) ]
 
     for sibling_id in valid_siblings:
         sibling_task = Clickup.get_task(sibling_id)
-        sibling_cf = Clickup.format_field_mapping({"fields": sibling_task["custom_fields"]})
+        sibling_cf = Clickup.format_field_map({"fields": sibling_task["custom_fields"]})
         if sibling_task['status'] != 'closed':
             fields_to_update = {
                 "Archive Path" : args.rsync_dir,
@@ -79,7 +83,7 @@ if __name__ == "__main__":
                 Clickup.update_task(sibling_id, {"status": "closed"})
 
     # update delivery dir on parent
-    parent_cf = Clickup.format_field_mapping({"fields": parent["custom_fields"]})
+    parent_cf = Clickup.format_field_map({"fields": parent["custom_fields"]})
     fields_to_update = {
         "Delivery Path": args.del_path
     }

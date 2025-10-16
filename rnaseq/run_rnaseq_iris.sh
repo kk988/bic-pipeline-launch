@@ -11,13 +11,13 @@ if [ $host != "islogin01.mskcc.org" ] ; then
 fi
 
 # constants
-bic_rnaseq="/usersoftware/test01/opt/common/bic/internal/bic-rnaseq/3.17.0_bic_1.0.0"
-bic_diff="/usersoftware/test01/opt/common/bic/internal/bic-differentialabundance/1.5.0_bic_2.0.0"
+bic_rnaseq="/usersoftware/core001/common/bic/internal/bic-rnaseq/3.17.0_bic_1.0.0"
+bic_diff="/usersoftware/core001/common/bic/internal/bic-differentialabundance/1.5.0_bic_2.0.0"
 profile="singularity"
 DE_only=false
 rsync_only=false
-slurm_partition="test01"
-pandas_simg="/data1/test01/bic/depot/singularity/pandas/pandas.simg"
+slurm_partition="cmobic_cpu,cmobic_pipeline"
+pandas_simg="/data1/core001/rsrc/genomic/bic/singularity/pandas/pandas.simg"
 
 # usage:
 # run_rnaseq.sh <request file> <analysis directory> <email> <rsync_dir> [DE_only] [extra args]

@@ -149,8 +149,9 @@ fi
 
 if [ ! -z "$ticket_id" ]; then
     echo "Updating ticket: $ticket_id"
-    echo "Running singularity exec -B ${dirname $script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd"
-    singularity exec -B ${dirname $script_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd
+    script_parent_dir=$(dirname ${script_dir})
+    echo "Running singularity exec -B ${script_parent_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd"
+    singularity exec -B ${script_parent_dir} -B ${run_dir} $pfg_simg $close_pipeline_cmd
 fi
 
 

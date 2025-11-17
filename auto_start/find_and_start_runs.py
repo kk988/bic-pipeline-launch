@@ -7,7 +7,7 @@ import fcntl
 import time
 
 # hopefully this will overwrite the config that is imported from PFG
-from config import *
+from auto_config import *
 
 # script will search every list in the config file - for open tasks 
 # that are assigned to the user id in the config file. If the title
@@ -91,7 +91,7 @@ def run_create_nf_files(pipeline, run_path, task, strand, build):
 
 def start_pipeline(run_path, pipeline, task):
     # run the pipeline
-    # grab reqeust file 
+    # grab request file 
     request_file = glob.glob(os.path.join(run_path, PROJECT_DATA[pipeline]['request_file_glob']))
     if len(request_file) != 1:
         logging.error(f"One request file NOT found in {run_path}")
@@ -108,132 +108,228 @@ def start_pipeline(run_path, pipeline, task):
     logging.debug("Command added to queue")
     return True
 
+def grab_tickets_with_status(pipeline, status):
+    body = {
+            'assignees[]': [CLICKUP_USER_ID],
+            'statuses[]': [status],
+            'include_closed': 'false',
+            'subtasks': 'true'
+        }
+    todo_tasks = Clickup.get_tasks(CLICKUP_LIST_ID[pipeline], body)
+
+    return todo_tasks['tasks']
+
+def process_sync_task(task, pipeline):
+    logging.info(f"Checking task {task['name']}")
+    # if task name ends with any of the acceptable tickets
+    # let's pretty print the results.
+    if any(ticket in task['name'] for ticket in PROJECT_DATA[pipeline]['acceptable_tickets']):
+        logging.info(f"Found task {task['name']} in list {pipeline}")
+
+        parent_id = task.get('parent', None)
+        if parent_id is None:
+            logging.info(f"Task {task['name']} has no parent task, skipping")
+            return
+
+        # if task has email alerted field set to true, skip
+        email_alerted_idx = Clickup.find_custom_field_index(task['custom_fields'], 'Email Alerted')
+        if email_alerted_idx is None:
+            logging.info(f"Task {task['name']} does not have Email Alerted field, skipping")
+            return
+
+        if "value" in task['custom_fields'][email_alerted_idx] and task['custom_fields'][email_alerted_idx]["value"] == 'true':
+            logging.info(f"Task {task['name']} has emailed user, already, skipping")
+            return
+        parent = Clickup.get_task(parent_id)
+        logging.debug(f"Parent task {parent['name']} found")
+
+        project_name = parent['name']
+        valid_siblings = [ subtask['id'] for subtask in parent['subtasks'] if any(ticket in subtask['name'] for ticket in PROJECT_DATA[pipeline]['siblings_to_start']) ]
+
+        # let's find run path, and then if the correct mapping file is present, we can start the pipeline
+        run_path = f"{PROJECT_DATA[pipeline]['work_dir']}/{project_name}"
+        mapping = glob.glob(os.path.join(run_path, PROJECT_DATA[pipeline]['mapping_glob'] + "_iris.txt"))
+        old_mapping = glob.glob(os.path.join(run_path, PROJECT_DATA[pipeline]['mapping_glob']))
+
+        if len(mapping) != 1:
+            logging.info(f"No mapping file found in {run_path}, skipping")
+            return
+        mapping = mapping[0]
+        # if the mapping file is not present, we can't start the pipeline
+        if not os.path.exists(mapping):
+            logging.info(f"Mapping file {mapping} not found, skipping")
+            return
+        # if the mapping file is present, we can start the pipeline
+        logging.info(f"Mapping file {mapping} found, starting pipeline")
+        # I think this means we are OKAY to start the pipeline!
+        logging.info(f"Starting pipeline for task {task['name']}")
+
+        # We need to move the old mapping file to a new place
+        if len(old_mapping) == 1:
+            old_mapping_file = old_mapping[0]
+            rename_old_mapping = old_mapping_file.replace(".txt", f".old.txt")
+            os.rename(old_mapping_file, rename_old_mapping)
+
+        #rename the new mapping file to Project_{project_name}_sample_mapping.txt
+        new_mapping_file = mapping.replace("_iris.txt", "")
+        os.rename(mapping, new_mapping_file)
+
+        parent_id = task.get('parent', None)
+        if parent_id is None:
+            logging.info(f"Task {task['name']} has no parent task, skipping")
+            return
+        parent = Clickup.get_task(parent_id)
+        logging.debug(f"Parent task {parent['name']} found")
+
+        # record parent task name, 
+        # record sibling tasks whose name ends with a value in sibling_to_start
+        parent_fields = Clickup.format_field_map({'fields': parent['custom_fields']})
+        build = parent_fields['Build']["value"].lower()
+        strand = parent_fields['Strand']["value"].lower()
+        if strand == "none":
+            strand = "unstranded"
+        rsync_dir = PROJECT_DATA[pipeline]['rsync_dir']
+
+        # step one - run pfg to nf script
+        if "create_nf_files" in PROJECT_DATA[pipeline]:
+            logging.debug(f"Running {PROJECT_DATA[pipeline]['create_nf_files']}")
+            
+            nf_file_create = run_create_nf_files(pipeline, run_path, task, strand, build)
+            if not nf_file_create:
+                logging.error(f"create_nf_files failed for task {task['name']}")
+                return
+            
+        bic_launch = start_pipeline(run_path, pipeline, task)
+
+        if not bic_launch:
+            logging.error(f"bic_launch failed for task {task['name']}")
+            return
+        # step two - "start" task and sibling tasks.
+        # update custom fields
+        inprogress = {"status": "in progress"}
+        Clickup.update_task(task['id'], inprogress)
+        Clickup.set_custom_field(task['id'], UUIDS['Run Path'], run_path)
+        Clickup.set_custom_field(task['id'], UUIDS['Archive Path'], f"{rsync_dir}/{project_name}")
+
+        # update parent task to in progress
+        Clickup.update_task(parent_id, inprogress)
+
+        for sibling in valid_siblings:
+            logging.debug(f"Starting sibling task {sibling}")
+            Clickup.update_task(sibling, inprogress)
+            Clickup.set_custom_field(sibling, UUIDS['Run Path'], run_path)
+            Clickup.set_custom_field(sibling, UUIDS['Archive Path'], f"{rsync_dir}/{project_name}")
+
+        # step three - send start pipeline email
+        msg = f"Pipeline added to queue for {task['name']} in {run_path}. Archive path is {rsync_dir}/{project_name}. \n\n"
+        email_message(EMAIL, f"Pipeline started for task {task['name']}", msg)
+
+
+def process_todo_task(task, pipeline):
+    logging.info(f"Checking task {task['name']}")
+    # if task name ends with any of the acceptable tickets
+    # let's pretty print the results.
+    if any(ticket in task['name'] for ticket in PROJECT_DATA[pipeline]['acceptable_tickets']):
+        logging.info(f"Found task {task['name']} in list {pipeline}")
+        
+        # get the parent task, if there is no parent task, skip 
+        parent_id = task.get('parent', None)
+        if parent_id is None:
+            logging.info(f"Task {task['name']} has no parent task, skipping")
+            return
+
+        # if task has email alerted field set to true, skip
+        email_alerted_idx = Clickup.find_custom_field_index(task['custom_fields'], 'Email Alerted')
+        if email_alerted_idx is None:
+            logging.info(f"Task {task['name']} does not have Email Alerted field, skipping")
+            return
+
+        if "value" in task['custom_fields'][email_alerted_idx] and task['custom_fields'][email_alerted_idx]["value"] == 'true':
+            logging.info(f"Task {task['name']} has emailed user, already, skipping")
+            return
+
+        parent = Clickup.get_task(parent_id)
+        logging.debug(f"Parent task {parent['name']} found")
+
+        # record parent task name, 
+        # record sibling tasks whose name ends with a value in sibling_to_start
+        project_name = parent['name']
+        valid_siblings = [ subtask['id'] for subtask in parent['subtasks'] if any(ticket in subtask['name'] for ticket in PROJECT_DATA[pipeline]['siblings_to_start']) ]
+
+        parent_fields = Clickup.format_field_map({'fields': parent['custom_fields']})
+        project_path = parent_fields['ProjectFolder']["value"]
+        
+
+        if 'Comments' in parent_fields.keys() and PROJECT_DATA[pipeline]['manual_pipeline_comment'] in parent_fields['Comments']:
+            logging.info(f"Task {task['name']} has a manual pipeline comment, skipping")
+            email_message(EMAIL, f"Task {task['name']} has a manual pipeline comment", f"Task {task['name']} has a manual pipeline comment. You must do this manually.")
+            Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
+            return
+        
+        # make sure RunPath is not already made
+        run_path = f"{PROJECT_DATA[pipeline]['work_dir']}/{project_name}"
+        if os.path.exists(run_path):
+            logging.info(f"Run path {run_path} already exists, skipping")
+            email_message(EMAIL, f"Run path {run_path} already exists", f"Run path {run_path} already exists. You must do this manually.")
+            Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
+            return
+
+        logging.debug(f"Run path {run_path} will be created")
+        # make run path - copy files from project_path to run path
+        os.makedirs(run_path, exist_ok=True)
+        copy_all_files(project_path, run_path)
+        # write task id to a file in run_path
+        with open(f"{run_path}/clickup_task_id.txt", 'w') as f:
+            f.write(task['id'] + '\n')
+        logging.debug(f"Run path {run_path} created; project files copied")
+
+        rsync_dir = PROJECT_DATA[pipeline]['rsync_dir']
+        # make sure the project run number isn't already in the archive dir
+        if ":" in PROJECT_DATA[pipeline]['rsync_dir']:
+            rsync_dir = PROJECT_DATA[pipeline]['rsync_dir'].split(":")[1]
+        # make sure the project run number isn't already in the archive dir
+        archive_path = f"{rsync_dir}/{project_name}/r_00{parent_fields['RunNumber']['value']}"
+        logging.debug(f"Archive path {archive_path} should not be present")
+        if os.path.exists(archive_path):
+            logging.info(f"Archive path {archive_path} already exists, skipping")
+            email_message(EMAIL, f"Archive path {archive_path} already exists", f"Archive path {archive_path} already exists. You must do this manually.")
+            Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
+            return
+        
+        # starts RSYNC for fastq files
+        mapping = glob.glob(os.path.join(run_path, PROJECT_DATA[pipeline]['mapping_glob']))
+        append_to_file_safely(FASTQ_SYNC_QUEUE, f"{mapping[0]}")
+        # then change status to syncing fastq
+        Clickup.update_task(task['id'], {'status': 'syncing fastq'})
+        # then change status for sibling tasks to syncing fastq
+        for sibling in valid_siblings:
+            Clickup.update_task(sibling, {'status': 'syncing fastq'})
+        # the end.
+
 if __name__ == '__main__':
     logging.basicConfig(level=LOG_LEVEL)
     logging.debug("Starting script to find and start runs")
 
     for pipeline in CLICKUP_LIST_ID:
         logging.debug(f"Searching list {pipeline}")
-        body = {
-            'assignees[]': [CLICKUP_USER_ID],
-            'statuses[]': ['to do'],
-            'include_closed': 'false',
-            'subtasks': 'true'
-        }
-        todo_tasks = Clickup.get_tasks(CLICKUP_LIST_ID[pipeline], body)
-        if len(todo_tasks['tasks']) > 0:
-            logging.info(f"Found {len(todo_tasks['tasks'])} tasks in list {pipeline}")
 
-        for task in todo_tasks["tasks"]:
-            logging.info(f"Checking task {task['name']}")
-            # if task name ends with any of the acceptable tickets
-            # let's pretty print the results.
-            if any(ticket in task['name'] for ticket in PROJECT_DATA[pipeline]['acceptable_tickets']):
-                logging.info(f"Found task {task['name']} in list {pipeline}")
+        # Find and process syncing fastq tasks
+        sync_tasks = grab_tickets_with_status(pipeline, 'syncing fastq')
+        if len(sync_tasks) > 0:
+            logging.info(f"Found {len(sync_tasks)} sync tasks in list {pipeline}")
+        for task in sync_tasks:
+            process_sync_task(task, pipeline)
+
+        # Find and process todo tasks
+        todo_tasks = grab_tickets_with_status(pipeline, 'to do')
+        if len(todo_tasks) > 0:
+            logging.info(f"Found {len(todo_tasks)} todo tasks in list {pipeline}")
+        for task in todo_tasks:
+            process_todo_task(task, pipeline)
+        
+        
+        
                 
-                # get the parent task, if there is no parent task, skip 
-                parent_id = task.get('parent', None)
-                if parent_id is None:
-                    logging.info(f"Task {task['name']} has no parent task, skipping")
-                    continue
-
-                # if task has email alerted field set to true, skip
-                email_alerted_idx = Clickup.find_custom_field_index(task['custom_fields'], 'Email Alerted')
-                if email_alerted_idx is None:
-                    logging.info(f"Task {task['name']} does not have Email Alerted field, skipping")
-                    continue
-
-                if "value" in task['custom_fields'][email_alerted_idx] and task['custom_fields'][email_alerted_idx]["value"] == 'true':
-                    logging.info(f"Task {task['name']} has emailed user, already, skipping")
-                    continue
-
-                parent = Clickup.get_task(parent_id)
-                logging.debug(f"Parent task {parent['name']} found")
-
-                # record parent task name, 
-                # record sibling tasks whose name ends with a value in sibling_to_start
-                project_name = parent['name']
-                valid_siblings = [ subtask['id'] for subtask in parent['subtasks'] if any(ticket in subtask['name'] for ticket in PROJECT_DATA[pipeline]['siblings_to_start']) ]
-
-                parent_fields = Clickup.format_field_map({'fields': parent['custom_fields']})
-                project_path = parent_fields['ProjectFolder']["value"]
-                build = parent_fields['Build']["value"].lower()
-                strand = parent_fields['Strand']["value"].lower()
-                if strand == "none":
-                    strand = "unstranded"
-
-                if 'Comments' in parent_fields.keys() and PROJECT_DATA[pipeline]['manual_pipeline_comment'] in parent_fields['Comments']:
-                    logging.info(f"Task {task['name']} has a manual pipeline comment, skipping")
-                    email_message(EMAIL, f"Task {task['name']} has a manual pipeline comment", f"Task {task['name']} has a manual pipeline comment. You must do this manually.")
-                    Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
-                    continue
-                
-                # make sure RunPath is not already made
-                run_path = f"{PROJECT_DATA[pipeline]['work_dir']}/{project_name}"
-                if os.path.exists(run_path):
-                    logging.info(f"Run path {run_path} already exists, skipping")
-                    email_message(EMAIL, f"Run path {run_path} already exists", f"Run path {run_path} already exists. You must do this manually.")
-                    Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
-                    continue
-
-                logging.debug(f"Run path {run_path} will be created")
-                # make run path - copy files from project_path to run path
-                os.makedirs(run_path, exist_ok=True)
-                copy_all_files(project_path, run_path)
-                # write task id to a file in run_path
-                with open(f"{run_path}/clickup_task_id.txt", 'w') as f:
-                    f.write(task['id'] + '\n')
-                logging.debug(f"Run path {run_path} created; project files copied")
-
-                rsync_dir = PROJECT_DATA[pipeline]['rsync_dir']
-                # make sure the project run number isn't already in the archive dir
-                if ":" in PROJECT_DATA[pipeline]['rsync_dir']:
-                    rsync_dir = PROJECT_DATA[pipeline]['rsync_dir'].split(":")[1]
-                # make sure the project run number isn't already in the archive dir
-                archive_path = f"{rsync_dir}/{project_name}/r_00{parent_fields['RunNumber']['value']}"
-                logging.debug(f"Archive path {archive_path} should not be present")
-                if os.path.exists(archive_path):
-                    logging.info(f"Archive path {archive_path} already exists, skipping")
-                    email_message(EMAIL, f"Archive path {archive_path} already exists", f"Archive path {archive_path} already exists. You must do this manually.")
-                    Clickup.set_custom_field(task['id'], UUIDS['Email Alerted'], 'true')
-                    continue
-
-                # I think this means we are OKAY to start the pipeline!
-                logging.info(f"Starting pipeline for task {task['name']}")
-
-                # step one - run pfg to nf script
-                if "create_nf_files" in PROJECT_DATA[pipeline]:
-                    logging.debug(f"Running {PROJECT_DATA[pipeline]['create_nf_files']}")
-                    
-                    nf_file_create = run_create_nf_files(pipeline, run_path, task, strand, build)
-                    if not nf_file_create:
-                        logging.error(f"create_nf_files failed for task {task['name']}")
-                        continue
-                    
-                bic_launch = start_pipeline(run_path, pipeline, task)
-
-                if not bic_launch:
-                    logging.error(f"bic_launch failed for task {task['name']}")
-                    continue
-                # step two - "start" task and sibling tasks.
-                # update custom fields
-                inprogress = {"status": "in progress"}
-                Clickup.update_task(task['id'], inprogress)
-                Clickup.set_custom_field(task['id'], UUIDS['Run Path'], run_path)
-                Clickup.set_custom_field(task['id'], UUIDS['Archive Path'], f"{rsync_dir}/{project_name}")
-
-                # update parent task to in progress
-                Clickup.update_task(parent_id, inprogress)
-
-                for sibling in valid_siblings:
-                    logging.debug(f"Starting sibling task {sibling}")
-                    Clickup.update_task(sibling, inprogress)
-                    Clickup.set_custom_field(sibling, UUIDS['Run Path'], run_path)
-                    Clickup.set_custom_field(sibling, UUIDS['Archive Path'], f"{rsync_dir}/{project_name}")
-
-                # step three - send start pipeline email
-                msg = f"Pipeline added to queue for {task['name']} in {run_path}. Archive path is {rsync_dir}/{project_name}. \n\n"
-                email_message(EMAIL, f"Pipeline started for task {task['name']}", msg)
 
                 
 

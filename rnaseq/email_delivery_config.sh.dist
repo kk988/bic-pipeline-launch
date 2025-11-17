@@ -1,0 +1,10 @@
+# Email delivery configuration
+# Copy this file to email_delivery_config.sh and customize as needed
+
+SENDER_NAME="Bioinformatics Core"
+SENDER_EMAIL="bic-example-email@mskcc.org"
+DELIVERY_URL="https://path/to/project/${PID}/rnaseq/${RUN_NUM}/project_main"
+INFO_URL="https://bicurl.com/bic/rnaseq-delivery-information/"
+EMAIL_US_URL="mailto:bic-example-email@mskcc.org"
+SURVEY_URL="http://survey.yeah"
+

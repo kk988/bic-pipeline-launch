@@ -16,8 +16,7 @@ DE_only=false
 rsync_only=false
 pandas_simg="/juno/bic/depot/singularity/pandas/pandas.simg"
 pfg_simg="/juno/opt/common/bic/internal/project_file_generation/pfg.simg"
-#delivery_dir="/ifs/rtsia01/bic/results/"
-delivery_dir="/juno/bic/work/kristakaz/fake_rsync"
+delivery_dir="/ifs/rtsia01/bic/results/"
 
 # usage:
 # run_rnaseq.sh <request file> <analysis directory> <email> <rsync_dir> [DE_only] [extra args]
@@ -105,7 +104,7 @@ if [ $DE_only == false ] && [ $rsync_only == false ]; then
     ## RNASEQ
 
     bsub -J "rnaseq_${dir_name}" -n 4 -R "rusage[mem=8]" -W 300:00 -cwd ${an_dir} -o ${an_dir}/rnaseq.log -e ${an_dir}/rnaseq.err \
-nextflow run $bic_rnaseq \
+"nextflow run $bic_rnaseq \
 -resume \
 -profile $profile \
 -ansi-log false \
@@ -114,7 +113,12 @@ nextflow run $bic_rnaseq \
 -w ${an_dir}/work \
 --genome ${genome} \
 --input ${an_dir}/input.csv \
---outdir ${an_dir}/r_${run_number}  
+--outdir ${an_dir}/r_${run_number}"
+
+# added this for smartseq - however, there is some manual intermediate stpes that needs to happen.
+# -c ${an_dir}/bic_override2.config \
+# --with_umi --umitools_extract_method 'regex' --save_umi_intermeds --umitools_dedup_stats --umitools_bc_pattern '^(?P<discard_1>ATTGCGCAATG)(?P<umi_1>.{8}).*' \
+
 
 else
     # make dir if it doesn't exist yet
@@ -176,7 +180,7 @@ sleep 1
 
 bsub -J "finalize_${dir_name}" ${rsync_job_hold} -u "${email}" -N \
 -n 1 -R "rusage[mem=2]" -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \
-/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir $pandas_simg $pfg_simg $delivery_dir
+/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir $pandas_simg $pfg_simg $delivery_dir terra
 
 
 

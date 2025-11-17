@@ -7,7 +7,7 @@ import io
 from contextlib import redirect_stdout
 import re
 import traceback
-from config import *
+from auto_config import *
 from Service import Clickup
 import glob
 from limsETL import LIMSRequestException
@@ -60,7 +60,7 @@ def check_fastq(ticket, pipeline):
             logging.debug(f"Found IGO ID line in ticket {ticket['id']}: {line}")
             igo_id_value = line.split(":", maxsplit=1)[-1].strip()
             # regex to find igo ids in the line
-            igo_ids = re.findall(r'(\d{5}(?:_[a-zA-Z])?)', igo_id_value)
+            igo_ids = re.findall(r'(\d{5}(?:_[a-zA-Z]+)?)', igo_id_value)
             if igo_ids:
                 igo_ids_to_check.update(igo_ids)
                 logging.debug(f"IGO IDs found: {igo_ids}")

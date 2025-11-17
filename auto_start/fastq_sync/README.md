@@ -9,7 +9,7 @@ This script requires a queue file to be present somewhere. It can be empty (and 
 To create the queue file, just touch a file, ex: `touch /data1/core001/CACHE/queue_list.txt`. 
 
 #### Add to queue file
-To add to the queue file, add the full path to the mapping file for the fastqs you want to sync. Ex: `echo /data/core001/work/rnaseq/Proj_1234/Proj_1234_sample_mapping.txt >> /data1/core001/CACHE/queue_list.txt` 
+To add to the queue file, add the full path to the mapping file for the fastqs you want to sync. Ex: `echo "/data/core001/work/rnaseq/Proj_1234/Proj_1234_sample_mapping.txt" >> /data1/core001/CACHE/queue_list.txt` 
 
 ### sync_fastq.sh setup
 There are a few things in the sync_fastq.sh that should be customized before you start using the script. Most of the time nothing will have to change, but I just wanted to mention these. 

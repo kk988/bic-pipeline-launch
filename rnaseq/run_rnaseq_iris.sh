@@ -10,7 +10,7 @@ if [ $host != "islogin01.mskcc.org" ] ; then
     exit 1
 fi
 
-# constantsls
+# constants
 bic_rnaseq="/usersoftware/core001/common/bic/internal/bic-rnaseq/dev"
 bic_diff="/usersoftware/core001/common/bic/internal/bic-differentialabundance/dev"
 profile="singularity"

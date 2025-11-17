@@ -23,7 +23,7 @@ fi
 mapping=$(head -n 1 $fq_queue)
 
 # Exit if no line was captured
-if [ -z $mapping ]; then
+if [ -z "$mapping" ]; then
     exit 0
 fi
 

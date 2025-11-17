@@ -17,12 +17,17 @@ EMAILS_TO_SEND=$4
 
 INV_FIRST_NAME=${INV_NAME#*, }
 
-SENDER_NAME="Bioinformatics Core"
-SENDER_EMAIL="bicrequest@mskcc.org"
-DELIVERY_URL="https://bicdelivery.mskcc.org/project/${PID}/rnaseq/${RUN_NUM}/project_main"
-INFO_URL="https://bic.mskcc.org/bic/rnaseq-delivery-information/"
-EMAIL_US_URL="mailto:bicrequest@mskcc.org"
-SURVEY_URL="http://bic.mskcc.org/bic/rnaseq-analysis-feedback"
+# Load configuration from external config file
+script_dir=$(dirname "$(realpath "$0")")
+config_file="${script_dir}/email_delivery_config.sh"
+
+if [ ! -f "$config_file" ]; then
+    echo "Error: Config file not found: $config_file" >&2
+    echo "Please copy email_delivery_config.sh.dist to email_delivery_config.sh and customize it." >&2
+    exit 1
+fi
+
+source "$config_file"
 
 RECIPIENT="kazmierk@mskcc.org"
 SUBJECT="Proj_${PID} results"

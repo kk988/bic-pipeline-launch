@@ -10,7 +10,7 @@ script_dir=$(dirname "$(realpath "$0")")
 
 # if there is not 4 arguments, print usage and exit
 if [ $# -ne 7 ]; then
-    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg> <cluster>"
+    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg> <pfg_simg> <delivery_dir> <cluster>"
     echo "run_dir: directory where the pipeline was run (should have project files)"
     echo "out_dir: outdir provided to the pipeline"
     echo "rsync_dir: directory to rsync the results to"
@@ -104,11 +104,15 @@ if [ -z "$pi" ] || [ -z "$inv" ]; then
 fi
 del_path=${delivery_dir}/${pi}/${inv}/${proj_id}/
 
-# if dellivery_dir contains an @ in it, don't mkdir -p, just rsync
+delivery_user="none"
+delivery_host="none"
+# if delivery_dir contains an @ in it, don't mkdir -p, just rsync
 if [[ $delivery_dir == *"@"* ]]; then
+    delivery_user=$(echo $delivery_dir | cut -d"@" -f1)
+    delivery_host=$(echo $delivery_dir | cut -d"@" -f2 | cut -d":" -f1)
     echo "Delivery directory contains an @, have to create files differently"
     del_path_no_server=${del_path#*:}
-    create_dirs="ssh kristakaz@terra 'umask 002 && mkdir -m 775 -p ${del_path_no_server}'"
+    create_dirs="ssh ${delivery_user}@${delivery_host} 'umask 002 && mkdir -m 775 -p ${del_path_no_server}'"
     eval $create_dirs
 else
     mkdir -m 775 -p $del_path
@@ -134,10 +138,10 @@ if [ ! -z "$err_lines" ]; then
 fi
 
 ## PEROFRM DELIVERY
-# This is going to be a crazy command because I have to run it in one big line on terra.
+# This is going to be a crazy command because I have to run it in one big line on delivery host.
 del_path_no_server="${del_path#*:}"
 
-cmd_for_delivery="ssh kristakaz@terra 'export MODULEPATH=/compute/juno/bic/ROOT/opt/modulefiles:$MODULEPATH \
+cmd_for_delivery="ssh ${delivery_user}@${delivery_host} 'export MODULEPATH=/compute/juno/bic/ROOT/opt/modulefiles:$MODULEPATH \
 && . /usr/share/Modules/init/bash && module load singularity/3.7.1 && cd $del_path_no_server \
 && cp ${del_path_no_server}/${run_num}/project_files/Proj*request.txt . \
 && singularity exec --bind /juno/bic --bind /ifs /juno/opt/common/bic/internal/project_file_generation/pfg.simg python3 /authorization_db/init_project_permissions.py --project_path $del_path_no_server --assembly $build \

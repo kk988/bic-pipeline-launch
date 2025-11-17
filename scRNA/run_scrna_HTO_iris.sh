@@ -22,11 +22,11 @@ job_to_run="sbatch -J \"scrnaseq_${dir_name}\" -p ${slurm_partition} -n 12 --tim
 --wrap=\"singularity exec -B /data1 -B /usersoftware/core001 /usersoftware/core001/common/bic/internal/.singularity/cache/quay.io-nf-core-cellranger-8.0.0.img \
 cellranger count --id=17877 \
 --transcriptome=/data1/core001/work/bic/kazmierk/scrnaseq/Proj_B-102-331/cellranger_out/cellranger/mkref/cellranger_reference \
---libraries=/data1/core001/work/bic/kazmierk/scrnaseq/Proj_17877/libraries.csv \
---feature-ref=/data1/core001/work/bic/kazmierk/scrnaseq/Proj_17877/feature_ref.csv \
+--libraries=${an_dir}/libraries.csv \
+--feature-ref=${an_dir}/feature_ref.csv \
 --localcores=12 \
 --localmem=72 \
---create-bam=true > ${an_dir}/cellranger_count.log 2>&1\""
+--create-bam=true  > ${an_dir}/cellranger_count.log 2>&1\""
 
 
 

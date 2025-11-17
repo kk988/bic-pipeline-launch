@@ -2,10 +2,10 @@
 
 set -e
 
-export LSF_LIBDIR=/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/lib
-export LSF_SERVERDIR=/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/etc
-export LSF_ENVDIR=/admin/lsfjuno/lsf/conf
-export PATH="$PATH:/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/bin"
+#export LSF_LIBDIR=/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/lib
+#export LSF_SERVERDIR=/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/etc
+#export LSF_ENVDIR=/admin/lsfjuno/lsf/conf
+#export PATH="$PATH:/admin/lsfjuno/lsf/10.1/linux3.10-glibc2.17-x86_64/bin"
 
 # This script will be used to execute the run scripts for pipeline runs
 # a pipeline command will be written to a "queue" file

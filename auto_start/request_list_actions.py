@@ -7,7 +7,7 @@ import io
 from contextlib import redirect_stdout
 import re
 import traceback
-from config import *
+from auto_config import *
 from Service import Clickup
 import glob
 from limsETL import LIMSRequestException

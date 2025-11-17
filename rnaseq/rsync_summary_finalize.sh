@@ -9,12 +9,15 @@ set -e
 script_dir=$(dirname "$(realpath "$0")")
 
 # if there is not 4 arguments, print usage and exit
-if [ $# -ne 6 ]; then
-    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg>"
+if [ $# -ne 7 ]; then
+    echo "Usage: rsync_summary_finalize.sh <rundir> <outdir> <rsync_dir> <panda_simg> <cluster>"
     echo "run_dir: directory where the pipeline was run (should have project files)"
     echo "out_dir: outdir provided to the pipeline"
     echo "rsync_dir: directory to rsync the results to"
     echo "panda_simg: path to the panda singularity image"
+    echo "pfg_simg: path to the pfg singularity image"
+    echo "delivery_dir: directory to rsync the results to for delivery"
+    echo "cluster: cluster that this script is running on"
     exit 1
 fi
 
@@ -25,6 +28,7 @@ rsync_dir=$3
 panda_simg=$4
 pfg_simg=$5
 delivery_dir=$6
+cluster=$7
 
 # if outdir is not a full path, add it to run_dir.
 if [[ $out_dir != /* ]]; then
@@ -90,24 +94,28 @@ this_stderr=$(python3 ${script_dir}/postpipeline_checks.py $run_dir 2>&1)
 #
 pi=$(grep ^PI: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 inv=$(grep ^Investigator: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+inv_name=$(grep ^Investigator_Name: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 proj_id=$(grep ^ProjectID: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 run_num="r_$(grep ^RunNumber $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " " | xargs printf "%03d" )"
+build=$(grep ^Build: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
 if [ -z "$pi" ] || [ -z "$inv" ]; then
     printf "No PI or Investigator found in request file, not delivering project!\n"
     exit 1
 fi
-del_path=${delivery_dir}/${pi}/${inv}/${proj_id}/${run_num}/
-mkdir -m 775 -p $del_path
-echo "rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path"
-rsync -avzP --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path
+del_path=${delivery_dir}/${pi}/${inv}/${proj_id}/
 
-#
-# permissions
-#
-# for each directory, set to 775
-find $del_path -type d -exec chmod 775 {} \;
-# for each file, set to 664
-find $del_path -type f -exec chmod 664 {} \;
+# if dellivery_dir contains an @ in it, don't mkdir -p, just rsync
+if [[ $delivery_dir == *"@"* ]]; then
+    echo "Delivery directory contains an @, have to create files differently"
+    del_path_no_server=${del_path#*:}
+    create_dirs="ssh kristakaz@terra 'umask 002 && mkdir -m 775 -p ${del_path_no_server}'"
+    eval $create_dirs
+else
+    mkdir -m 775 -p $del_path
+fi
+
+echo "rsync -avz --chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rw,Fg=rw,Fo=r --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path"
+rsync -avz --chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rw,Fg=rw,Fo=r --exclude-from=${script_dir}/rsync_excludes.txt $out_dir $del_path
 
 #
 # ticket_update
@@ -125,6 +133,19 @@ if [ ! -z "$err_lines" ]; then
     comments="Post-pipeline checks found some issues:\n$err_lines"
 fi
 
+## PEROFRM DELIVERY
+# This is going to be a crazy command because I have to run it in one big line on terra.
+del_path_no_server="${del_path#*:}"
+
+cmd_for_delivery="ssh kristakaz@terra 'export MODULEPATH=/compute/juno/bic/ROOT/opt/modulefiles:$MODULEPATH \
+&& . /usr/share/Modules/init/bash && module load singularity/3.7.1 && cd $del_path_no_server \
+&& cp ${del_path_no_server}/${run_num}/project_files/Proj*request.txt . \
+&& singularity exec --bind /juno/bic --bind /ifs /juno/opt/common/bic/internal/project_file_generation/pfg.simg python3 /authorization_db/init_project_permissions.py --project_path $del_path_no_server --assembly $build \
+&& rm Proj*request.txt'"
+
+echo "Running delivery command: $cmd_for_delivery"
+eval $cmd_for_delivery
+
 # grab ticket id from run_dir/clickup_task_id.txt if it exists
 if [ -f $run_dir/clickup_task_id.txt ]; then
     ticket_id=$(cat $run_dir/clickup_task_id.txt)
@@ -135,7 +156,7 @@ if [ -d $out_dir/star_htseq/differentialExpression_gene ]; then
     diff_ver=$(grep nf-core/differentialabundance $out_dir/star_htseq/differentialExpression_gene/pipeline_info/*.yml | cut -f2 -d":" | tr -d " ")
 fi
 
-close_pipeline_cmd="python ${script_dir}/close_pipeline_subtasks.py --ticket_id $ticket_id --rnaseq_ver $rnaseq_ver --rsync_dir $rsync_dir --del_path $del_path"
+close_pipeline_cmd="python ${script_dir}/close_pipeline_subtasks.py --ticket_id $ticket_id --rnaseq_ver $rnaseq_ver --rsync_dir $rsync_dir --del_path ${del_path_no_server}/${run_num}"
 
 echo -e "RNA-seq pipeline version: $rnaseq_ver"
 if [ ! -z "$diff_ver" ]; then
@@ -155,3 +176,21 @@ if [ ! -z "$ticket_id" ]; then
 fi
 
 
+if [ $cluster == "iris" ]; then
+    echo "Removing fastq files from CACHE directory"
+    rm -r /data1/core001/CACHE/igo/${proj_id}
+fi
+
+#
+# email delivery
+#
+eml1=$(grep ^DeliverTo_Email: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+eml2=$(grep ^PI_E-mail: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+eml3=$(grep ^Investigator_E-mail: $out_dir/project_files/*request.txt | cut -f2 -d":" | tr -d " ")
+
+all_emails=$(printf '%s\n%s\n%s\n' "$eml1" "$eml2" "$eml3" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | sort -u)
+unique_emails=$(echo "$all_emails" | tr '\n' ',' | sed 's/,$//')
+
+email_delivery_cmd="bash ${script_dir}/email_delivery_template.sh $proj_id $run_num '$inv_name' $unique_emails"
+echo "Running email delivery command: $email_delivery_cmd"
+eval $email_delivery_cmd

@@ -3,7 +3,7 @@ import os
 import sys
 import importlib.util
 
-config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../auto_start/config.py'))
+config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../auto_start/auto_config.py'))
 spec = importlib.util.spec_from_file_location("automation_config", config_path)
 automation_config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(automation_config)
@@ -29,10 +29,9 @@ def update_custom_fields(task_id, fields, task_fields, dry_run):
         for key, value in fields.items():
             if key in task_fields and "value" in task_fields[key] and task_fields[key]["value"] == value:
                 logging.info(f"Field {key} already set to {value}, skipping update.")
-                continue
-            
-        Clickup.set_custom_field(task_id, task_fields[key]['id'], value)
-        logging.info(f"Updated task {task_id} with fields {fields}")
+                continue    
+            Clickup.set_custom_field(task_id, task_fields[key]['id'], value)
+            logging.info(f"Updated task {task_id} field {key} with {value}")
 
 if __name__ == "__main__":
     args = get_args()
@@ -84,7 +83,14 @@ if __name__ == "__main__":
 
     # update delivery dir on parent
     parent_cf = Clickup.format_field_map({"fields": parent["custom_fields"]})
+    # warning - I'm assuming run number has a value already. It should, but I don't actually check.
+    run_num = parent_cf['RunNumber']['value']
+    pid = parent_cf['ProjectID']['value'].replace("Proj_","")
+
+
     fields_to_update = {
-        "Delivery Path": args.del_path
+        "Delivery Path": args.del_path,
+        "Delivery URL": automation_config.PROJECT_DATA["RNASEQ"]['delivery_url'].format(pid=pid, run_num="{:03d}".format(int(run_num)))
     }
     update_custom_fields(parent_id, fields_to_update, parent_cf, args.dry_run)
+

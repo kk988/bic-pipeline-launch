@@ -10,15 +10,17 @@ if [ $host != "islogin01.mskcc.org" ] ; then
     exit 1
 fi
 
-# constants
-bic_rnaseq="/usersoftware/core001/common/bic/internal/bic-rnaseq/3.17.0_bic_1.0.0"
-bic_diff="/usersoftware/core001/common/bic/internal/bic-differentialabundance/1.5.0_bic_2.0.0"
+# constantsls
+bic_rnaseq="/usersoftware/core001/common/bic/internal/bic-rnaseq/dev"
+bic_diff="/usersoftware/core001/common/bic/internal/bic-differentialabundance/dev"
 profile="singularity"
 DE_only=false
 rsync_only=false
 slurm_partition="cmobic_cpu,cmobic_pipeline"
 pandas_simg="/data1/core001/rsrc/genomic/bic/singularity/pandas/pandas.simg"
-
+pfg_simg="/usersoftware/core001/common/bic/internal/project_file_generation/pfg.simg"
+delivery_dir="kristakaz@terra:/ifs/rtsia01/bic/results"
+#delivery_dir="/data1/core002/res/bic/results"
 # usage:
 # run_rnaseq.sh <request file> <analysis directory> <email> <rsync_dir> [DE_only] [extra args]
 if [ $# -lt 3 ]; then
@@ -85,7 +87,7 @@ export MODULEPATH_ROOT=/usr/share/modulefiles
 export MODULESHOME=/usr/share/lmod/lmod
 mkdir -p ${an_dir}/work/scratch
 export TMPDIR=${an_dir}/work/scratch
-export NXF_SINGULARITY_CACHEDIR=/usersoftware/test01/opt/common/bic/internal/.singularity/cache
+export NXF_SINGULARITY_CACHEDIR=/usersoftware/core001/common/bic/internal/.singularity/cache
 
 . /usr/share/lmod/lmod/init/bash
 ##module load singularityce/4.1.0
@@ -201,9 +203,9 @@ sleep 1
 job_to_run="sbatch -J \"finalize_${dir_name}\" $rsync_job_hold --mail-user=${email} --mail-type=END,FAIL \
 -n 1 --time=6-00:00:00 -p ${slurm_partition} --mem 2G --chdir=${an_dir} -o ${an_dir}/rsync.log -e ${an_dir}/rsync.err \
 --mail-user ${email} \
---wrap=\"/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir $pandas_simg\""
+--wrap=\"/bin/bash ${script_dir}/rsync_summary_finalize.sh $an_dir ${an_dir}/r_${run_number} $rsync_dir $pandas_simg $pfg_simg $delivery_dir iris\""
 echo "$job_to_run \n\n"
-jobstring=$(eval $job_to_run)
+jobstring=$(eval $job_to_run) 
 if [ $? -ne 0 ]; then
     echo "Error running job: $job_to_run"
     echo "output: $jobstring"

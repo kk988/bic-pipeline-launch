@@ -71,7 +71,7 @@ for dir in $orig_dir; do
 done
 
 # make a new mapping file
-old_path="/igo/delivery/FASTQ"
+old_path="/ifs/datadelivery/igo_core/FASTQ"
 sed "s|${old_path}|${path_to_rsync}/${project}|g" $mapping > ${mapping}"_${host}.txt"
 
 chmod 664 ${mapping}"_${host}.txt"
